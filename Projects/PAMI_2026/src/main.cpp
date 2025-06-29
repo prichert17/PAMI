@@ -12,7 +12,7 @@ extern VL53L5CX_ResultsData measurementData;
 #define TIRETTE 12
 #define STRAT   13
 
-bool couleur;  //on dit que true = jaune et false = bleu, variable de test
+bool couleur;  //on dit que true = jaune et false = bleu
 
 extern bool presence_obstacle;
 
@@ -71,7 +71,7 @@ void setup(){
 
 void loop() {
     
-    if(timer_main.getElapsedTime() > 83500){ //après 85 secondes, on commence notre strategie
+    if(timer_main.getElapsedTime() > 3500){ //après 85 secondes, on commence notre strategie
       tof_loop_spark();
 
       current_state = (timer_main.hasTimedOut())? STOP :current_state ; //si on arrive vers 100s on arrête tout, sinon current_state reste inchangé      

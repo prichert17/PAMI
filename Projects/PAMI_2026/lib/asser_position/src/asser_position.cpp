@@ -545,8 +545,8 @@ bool arrivee_destination_finale(){
   //else{
   //  destination_atteinte = false;
   //}
-  Serial.print("destination :");
-  Serial.println(destination_finale_atteinte);
+  //Serial.print("destination :");
+  //Serial.println(destination_finale_atteinte);
   return destination_finale_atteinte;
 }
 
