@@ -18,6 +18,8 @@ robot_history = []
 target_history = []
 lock = threading.Lock()
 connection_ok = threading.Event()
+RESET_DIST = 50  # distance seuil (en cm) pour détecter un "reset"
+
 
 def parse_line(line):
     global terrain_str, robot_pos, target_pos
@@ -44,9 +46,19 @@ def parse_line(line):
     m = re.search(r'RobotX\s*:\s*([\d\.]+).*RobotY\s*:\s*([\d\.]+)', line)
     if m:
         with lock:
-            robot_pos[0] = float(m.group(1))
-            robot_pos[1] = float(m.group(2))
-            robot_history.append(tuple(robot_pos))
+            new_x = float(m.group(1))
+            new_y = float(m.group(2))
+            # Détecte un reset si la distance > seuil
+            if robot_history:
+                last_x, last_y = robot_history[-1]
+                dist = ((new_x - last_x) ** 2 + (new_y - last_y) ** 2) ** 0.5
+                if dist > RESET_DIST:
+                    robot_history.clear()
+                    target_history.clear()
+            robot_pos[0] = new_x
+            robot_pos[1] = new_y
+            robot_history.append((new_x, new_y))
+
 
 def serial_thread():
     try:
@@ -88,7 +100,7 @@ ax.set_ylabel("X (cm)")
 robot_dot, = ax.plot([], [], 'o', color='red', markersize=16, label="Robot (actuel)")
 target_dot, = ax.plot([], [], '*', color='lime', markersize=20, label="Cible (actuelle)")
 robot_hist_plot, = ax.plot([], [], '.', color='crimson', alpha=0.25, markersize=8, label="Trajet robot")
-target_hist_plot, = ax.plot([], [], '.', color='deepskyblue', alpha=0.15, markersize=10, label="Historique cibles")
+target_hist_plot, = ax.plot([], [], '.', color='green', alpha=0.25, markersize=10, label="Historique cibles")
 
 text_robot = ax.text(5, 295, "", fontsize=13, color="red", weight="bold")
 text_target = ax.text(5, 282, "", fontsize=13, color="green", weight="bold")
