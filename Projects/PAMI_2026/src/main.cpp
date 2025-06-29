@@ -35,11 +35,11 @@ void setup(){
     SerialBT.print("Strat = ");
     SerialBT.println(digitalRead(STRAT));
     pinMode(TIRETTE, INPUT_PULLUP);
-    while (digitalRead(TIRETTE) == HIGH) {
+    //while (digitalRead(TIRETTE) == HIGH) {    //on attend que la tirette soit en position 0
       //Serial.print("TIRETTE = ");
       //Serial.println(digitalRead(TIRETTE));
       //delay(200); // Limite l'affichage pour éviter de saturer la console
-    }
+    //}
     if (digitalRead(STRAT) == HIGH) { //si le switch est sur 1, on dit que le terrain est jaune
       couleur = true; //on dit que le terrain est jaune
     }else{ //si le switch est sur 0, on dit que le terrain est bleu
