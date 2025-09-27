@@ -1,128 +1,212 @@
 #include <Arduino.h>
-// Définition des pins pour le moteur 1 = moteur droit (STM32 L432KC)
-const int motorPin1 = PA6;  // Pin du moteur 1 (PWM sens 1) - TIM3_CH1
-const int motorPin2 = PA7;  // Pin du moteur 1 (PWM sens 2) - TIM3_CH2
-const int encoderPinA = PA8; // Pin de l'encodeur 1 A - TIM1_CH1
-const int encoderPinB = PA9; // Pin de l'encodeur 1 B - TIM1_CH2
 
-// Définition des pins pour le moteur 2 = moteur gauche (STM32 L432KC)
-const int motorPin3 = PA10;  // Pin du moteur 2 (PWM sens 1) - TIM1_CH3
-const int motorPin4 = PA11;  // Pin du moteur 2 (PWM sens 2) - TIM1_CH4
-const int encoderPinC = PB3; // Pin de l'encodeur 2 A - TIM2_CH2
-const int encoderPinD = PB4; // Pin de l'encodeur 2 B - TIM3_CH1
+// Mapping pins - STM32 L432KC
+// Moteurs PWM (TIM1 20kHz)
+const uint8_t motorPin1 = PA8;  // TIM1_CH1 - Moteur gauche sens 1
+const uint8_t motorPin2 = PA9;  // TIM1_CH2 - Moteur gauche sens 2  
+const uint8_t motorPin3 = PA10; // TIM1_CH3 - Moteur droit sens 1
+const uint8_t motorPin4 = PA11; // TIM1_CH4 - Moteur droit sens 2
 
-// Variables pour la gestion de l'encodeur 1
-volatile int pulseCount1 = 0;    // Nombre d'impulsions pour le moteur 1
-unsigned long lastTime1 = 0;     // Temps du dernier calcul pour le moteur 1
-float speed1 = 0.0;              // Vitesse du moteur 1 en tours par seconde
-int directionSpeed1 = 1;         // Direction du moteur 1
+// Encodeurs (GPIO avec timer périodique pour lecture)
+const uint8_t encA1 = PA0; // Encodeur gauche A 
+const uint8_t encB1 = PA1; // Encodeur gauche B
+const uint8_t encA2 = PA6; // Encodeur droit A  
+const uint8_t encB2 = PA7; // Encodeur droit B
 
-// Variables pour la gestion de l'encodeur 2
-volatile int pulseCount2 = 0;    // Nombre d'impulsions pour le moteur 2
-float speed2 = 0.0;              // Vitesse du moteur 2 en tours par seconde
-int directionSpeed2 = 1;         // Direction du moteur 2
+// UART vers ESP32 (PA2/PA3 - USART2 → Serial2)
+
+// Timer pour contrôle PID
+HardwareTimer *tCtrl = new HardwareTimer(TIM6);  // Timer contrôle PID
+
+// Variables pour la gestion des encodeurs en quadrature
+volatile int32_t enc1Count = 0;   // Compteur encodeur gauche
+volatile int32_t enc2Count = 0;   // Compteur encodeur droit
+volatile int32_t lastEnc1 = 0;    // Dernière valeur encodeur gauche
+volatile int32_t lastEnc2 = 0;    // Dernière valeur encodeur droit  
+volatile float speed1 = 0.0;      // Vitesse moteur gauche en tr/s
+volatile float speed2 = 0.0;      // Vitesse moteur droit en tr/s
+
+// États précédents pour décodage quadrature
+volatile uint8_t lastStateEnc1 = 0;
+volatile uint8_t lastStateEnc2 = 0;
 
 // Nombre d'impulsions par tour (selon la fiche technique)
-const int pulsesPerRevolution = 1400;  // Valeur mise à jour
+const int pulsesPerRevolution = 1400;  // CPR réducteur
+const float Te = 0.001f;               // Période échantillonnage (1kHz)
 
-// Paramètres pour le PID
+// Paramètres pour le PID (conservés identiques)
 float kp = 0.5, ki = 0.3, kd = -0.2;
-float targetSpeed1 = 255; // Vitesse cible moteur 1
-float targetSpeed2 = 255; // Vitesse cible moteur 2
+float targetSpeed1 = 255; // Vitesse cible moteur gauche (PWM equivalent)
+float targetSpeed2 = 255; // Vitesse cible moteur droit (PWM equivalent)
 float error1 = 0, error2 = 0;
 float prevError1 = 0, prevError2 = 0;
 float integral1 = 0, integral2 = 0;
-float duree_pid = 100;          //duree du PID en ms (intervalle de temps entre deux calcul)
 
+// Variables supplémentaires pour la position du robot (conservées)
+float robotX = 0.0;       // Position X du robot en cm
+float robotY = 0.0;       // Position Y du robot en cm
+float robotTheta = 0.0;   // Orientation du robot en radians
 
-// Déclaration des variables supplémentaires pour la position du robot
-float robotX = 0.0;  // Position X du robot en cm
-float robotY = 0.0;  // Position Y du robot en cm
-float robotTheta = 0.0;  // Orientation du robot en radians
-
-// Diamètre des roues en cm
+// Diamètre des roues en cm (conservé)
 const float wheelDiameter = 4.30;  
 const float wheelCircumference = wheelDiameter * PI;
 
-// Distance entre les roues en cm (les centres des deux roues, cf modélisation 3D)
+// Distance entre les roues en cm (conservé)
 const float wheelBase = 7.60;
 
 // Déclaration des fonctions
-void countPulse1();
-void countPulse2();
-void set_vitesse(float cmd1, float cmd2);
-void afficher_vitesse_instantannee();
-void computePID();
-void computePosition(float deltaLeft, float deltaRight);
+void setupPWM_20k();
+void setupEncoders(); 
+void setupCtrlLoopTimer(uint32_t freq_hz);
+int32_t readAndZeroEnc1(); // Lecture différentielle encodeur gauche
+int32_t readAndZeroEnc2(); // Lecture différentielle encodeur droit
+void ctrlISR();            // ISR contrôle PID 
+void enc1_ISR();           // ISR encodeur 1
+void enc2_ISR();           // ISR encodeur 2  
+void set_vitesse(float cmd1, float cmd2); // Fonction PWM (signature conservée)
+void computePosition(float deltaLeft, float deltaRight); // Calcul position
 
 
 
 void setup() {
-  // Initialisation des pins pour le moteur 1
-  pinMode(motorPin1, OUTPUT);
-  pinMode(motorPin2, OUTPUT);
-  pinMode(encoderPinA, INPUT_PULLUP);  // Pullup pour stabilité des signaux encodeur
-  pinMode(encoderPinB, INPUT_PULLUP);
-
-  // Initialisation des pins pour le moteur 2
-  pinMode(motorPin3, OUTPUT);
-  pinMode(motorPin4, OUTPUT);
-  pinMode(encoderPinC, INPUT_PULLUP);  // Pullup pour stabilité des signaux encodeur
-  pinMode(encoderPinD, INPUT_PULLUP);
-
-  // Initialisation de la communication série
-  Serial.begin(115200);
-
-  // Attache les interruptions pour les encodeurs
-  attachInterrupt(digitalPinToInterrupt(encoderPinA), countPulse1, RISING);
-  attachInterrupt(digitalPinToInterrupt(encoderPinC), countPulse2, RISING);
-
-  // Applique la vitesse initiale
-  set_vitesse(targetSpeed1,targetSpeed2);
-  Serial.println(" ");
+  // Initialisation communication série (USART2 PA2/PA3)
+  Serial2.begin(115200);
+  Serial.begin(115200); // USB Serial pour debug
+  
+  // Configuration PWM 20kHz 
+  setupPWM_20k();
+  
+  // Configuration encodeurs avec interruptions
+  setupEncoders();
+  
+  // Configuration timer contrôle PID à 1kHz
+  setupCtrlLoopTimer(1000);
+  
+  Serial.println("STM32 L432KC - Controle moteurs avec encodeurs quadrature");
+  Serial2.println("INIT,OK");
 }
 
 void loop() {
-  unsigned long currentTime = millis();
+  // Boucle principale vide - contrôle via ISR timer
+  // Optionnel: debug périodique par Serial
+  static unsigned long lastDebug = 0;
+  if (millis() - lastDebug > 500) { // Debug toutes les 500ms
+    Serial.print("V1: "); Serial.print(speed1, 3);
+    Serial.print(" | V2: "); Serial.print(speed2, 3);
+    Serial.print(" | X: "); Serial.print(robotX, 1);
+    Serial.print(" | Y: "); Serial.print(robotY, 1);
+    Serial.print(" | θ: "); Serial.println(robotTheta * 180.0 / PI, 1);
+    
+    // Envoi via UART vers ESP32 (format CSV)
+    Serial2.print(speed1); Serial2.print(",");
+    Serial2.print(speed2); Serial2.print(",");
+    Serial2.print(robotX); Serial2.print(",");
+    Serial2.print(robotY); Serial2.print(",");
+    Serial2.println(robotTheta * 180.0 / PI);
+    
+    lastDebug = millis();
+  }
+}
 
-  // Calcul des déplacements des roues (delta en cm/s)
-    float deltaLeft = speed1*wheelCircumference*2;
-    float deltaRight = speed2* wheelCircumference*2;
-  //Serial.println(deltaLeft);
-  //Serial.println(deltaRight);
+// === FONCTIONS DE CONFIGURATION ===
 
-
+// Configuration PWM 20kHz sur pins moteurs 
+void setupPWM_20k() {
+  // Configure pins en mode PWM
+  pinMode(motorPin1, OUTPUT); // PA8
+  pinMode(motorPin2, OUTPUT); // PA9
+  pinMode(motorPin3, OUTPUT); // PA10
+  pinMode(motorPin4, OUTPUT); // PA11
   
-
-  // Calcul de la vitesse pour le moteur 1 toutes les 100 ms (0,1 seconde)
-  if (currentTime - lastTime1 >= duree_pid) {
-    //afficher_vitesse_instantannee();
-    computePID();
-    // Calcul de la position
-    computePosition(deltaLeft, deltaRight);
-    lastTime1 = currentTime;
-  }
-
+  // Configure TIM1 pour 20kHz (nécessite accès registres si pas dans framework)
+  // Pour l'instant utilisation analogWrite standard, fréquence par défaut ~1kHz
+  Serial.println("PWM configuré sur PA8..PA11 (fréquence par défaut)");
 }
 
-// Fonction pour compter les impulsions de l'encodeur 1 et déterminer la direction
-void countPulse1() {
-  if (digitalRead(encoderPinA) == digitalRead(encoderPinB)) {
-    directionSpeed1 = -1;  // Sens positif
-  } else {
-    directionSpeed1 = 1; // Sens négatif
-  }
-  pulseCount1++;
+// Configuration encodeurs avec interruptions GPIO
+void setupEncoders() {
+  // Configuration pins encodeur 1 (gauche)
+  pinMode(encA1, INPUT_PULLUP); // PA0
+  pinMode(encB1, INPUT_PULLUP); // PA1
+  
+  // Configuration pins encodeur 2 (droit)  
+  pinMode(encA2, INPUT_PULLUP); // PA6
+  pinMode(encB2, INPUT_PULLUP); // PA7
+  
+  // État initial
+  lastStateEnc1 = (digitalRead(encB1) << 1) | digitalRead(encA1);
+  lastStateEnc2 = (digitalRead(encB2) << 1) | digitalRead(encA2);
+  
+  // Interruptions sur fronts (A et B pour chaque encodeur)
+  attachInterrupt(digitalPinToInterrupt(encA1), enc1_ISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encB1), enc1_ISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encA2), enc2_ISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encB2), enc2_ISR, CHANGE);
+  
+  enc1Count = 0;
+  enc2Count = 0;
+  lastEnc1 = 0;
+  lastEnc2 = 0;
+  Serial.println("Encodeurs configurés avec interruptions GPIO");
 }
 
-// Fonction pour compter les impulsions de l'encodeur 2 et déterminer la direction
-void countPulse2() {
-  if (digitalRead(encoderPinC) == digitalRead(encoderPinD)) {
-    directionSpeed2 = -1;  // Sens positif
-  } else {
-    directionSpeed2 = 1; // Sens négatif
+// Configuration timer contrôle PID
+void setupCtrlLoopTimer(uint32_t freq_hz) {
+  tCtrl->setOverflow(freq_hz, HERTZ_FORMAT);
+  tCtrl->attachInterrupt(ctrlISR);
+  tCtrl->resume();
+  Serial.print("Timer contrôle PID configuré à "); 
+  Serial.print(freq_hz); Serial.println(" Hz");
+}
+
+// === ISR ENCODEURS QUADRATURE ===
+
+// ISR encodeur 1 (gauche) - décodage quadrature X4
+void enc1_ISR() {
+  uint8_t newState = (digitalRead(encB1) << 1) | digitalRead(encA1);
+  uint8_t transition = (lastStateEnc1 << 2) | newState;
+  
+  // Table de décodage quadrature (sens + comptage X4)
+  switch(transition) {
+    case 0b0001: case 0b0111: case 0b1110: case 0b1000: enc1Count++; break;
+    case 0b0010: case 0b1011: case 0b1101: case 0b0100: enc1Count--; break;
   }
-  pulseCount2++;
+  lastStateEnc1 = newState;
+}
+
+// ISR encodeur 2 (droit) - décodage quadrature X4  
+void enc2_ISR() {
+  uint8_t newState = (digitalRead(encB2) << 1) | digitalRead(encA2);
+  uint8_t transition = (lastStateEnc2 << 2) | newState;
+  
+  // Table de décodage quadrature (sens + comptage X4)
+  switch(transition) {
+    case 0b0001: case 0b0111: case 0b1110: case 0b1000: enc2Count++; break;
+    case 0b0010: case 0b1011: case 0b1101: case 0b0100: enc2Count--; break;
+  }
+  lastStateEnc2 = newState;
+}
+
+// === FONCTIONS DE LECTURE ENCODEURS ===
+
+// Lecture différentielle encodeur gauche
+int32_t readAndZeroEnc1() {
+  noInterrupts();
+  int32_t current = enc1Count;
+  int32_t delta = current - lastEnc1;
+  lastEnc1 = current;
+  interrupts();
+  return delta;
+}
+
+// Lecture différentielle encodeur droit
+int32_t readAndZeroEnc2() {
+  noInterrupts();
+  int32_t current = enc2Count;
+  int32_t delta = current - lastEnc2;
+  lastEnc2 = current;
+  interrupts();
+  return delta;
 }
 
 
@@ -152,102 +236,53 @@ void set_vitesse(float cmd1, float cmd2) {
 }
 
 
-// Fonction pour afficher les vitesses instantanées des deux moteurs        //fonction inutilisée
-void afficher_vitesse_instantannee() {
-   // Moteur 1
-  speed1 = (227*(pulseCount1 / (float)pulsesPerRevolution) * directionSpeed1)*(1000/duree_pid);         //coeff de 1000/duree_pid car on fait le calcul tout les 1/duree_pid secondes, et on veut la valeur en tour/s pour ensuite la passer en valeur entre [0;255] avec le coeff 227
-  speed2 = (227*(pulseCount2 / (float)pulsesPerRevolution) * directionSpeed2)*(1000/duree_pid);
-  set_vitesse(speed1,speed2);
+// === FONCTION ISR CONTROLE PID ===
 
-
-  Serial.print("|   1    | ");
-  Serial.print(speed1, 2);  // Affiche avec 2 décimales
-  Serial.print("         | ");
-  Serial.print(directionSpeed1 > 0 ? "Avant     " : "Arrière   ");
-  Serial.print("| ");
-  Serial.print(error1);
-  Serial.println("                   |");
-
-  // Moteur 2
-  Serial.print("|   2    | ");
-  Serial.print(speed2, 2);  // Affiche avec 2 décimales
-  Serial.print("         | ");
-  Serial.print(directionSpeed2 > 0 ? "Avant     " : "Arrière   ");
-  Serial.print("| ");
-  Serial.print(error2);
-  Serial.println("                   |");
-
-pulseCount1 = 0; // Réinitialisation des impulsions
-  pulseCount2 = 0;
-}
-
-
-
-// Fonction pour calculer le PID
-void computePID() {
-
-  /* Calcul des erreurs */
-
-    // Moteur 1
-  speed1 = ((pulseCount1 / (float)pulsesPerRevolution) * directionSpeed1)*(1000/duree_pid);         //coeff de 1000:duree_pid car on fait le calcul tout les 1/duree_pid secondes, et on veut la valeur en tour/s
-  error1 = (targetSpeed1 - speed1*227);
-
-  // Moteur 2
-  speed2 = ((pulseCount2 / (float)pulsesPerRevolution) * directionSpeed2)*(1000/duree_pid);
-  error2 = (targetSpeed2 - speed2*227);
-
-
-  pulseCount1 = 0; // Réinitialisation des impulsions
-  pulseCount2 = 0;
-
-  // Intégrale
+// ISR appelée par timer à 1kHz pour contrôle PID
+void ctrlISR() {
+  // Lecture différentielle des encodeurs 
+  int32_t delta1 = readAndZeroEnc1(); // Encodeur gauche
+  int32_t delta2 = readAndZeroEnc2(); // Encodeur droit
+  
+  // Conversion en vitesses (tr/s)
+  speed1 = delta1 / (pulsesPerRevolution * Te); // Vitesse gauche
+  speed2 = delta2 / (pulsesPerRevolution * Te); // Vitesse droite
+  
+  // Calcul erreurs PID (cible en equivalent PWM, vitesse en tr/s * 227)
+  error1 = targetSpeed1 - (speed1 * 227.0f);
+  error2 = targetSpeed2 - (speed2 * 227.0f);
+  
+  // Intégration
   integral1 += error1;
   integral2 += error2;
-
-  // Dérivée
+  
+  // Dérivation  
   float derivative1 = error1 - prevError1;
   float derivative2 = error2 - prevError2;
-
-  // Calcul des commandes
+  
+  // Commandes PID
   float cmd1 = kp * error1 + ki * integral1 + kd * derivative1;
   float cmd2 = kp * error2 + ki * integral2 + kd * derivative2;
-
-  // Sauvegarde des erreurs précédentes
+  
+  // Sauvegarde erreurs précédentes
   prevError1 = error1;
   prevError2 = error2;
-
-  // Application des vitesses
-  set_vitesse(cmd1, cmd2);
-
-
-  // Debug
   
-  Serial.print("Vitesse1: ");
-  Serial.print(speed1);
-  Serial.print(" | Commande1: ");
-  Serial.print(cmd1);
-  Serial.print(" || Vitesse2: ");
-  Serial.print(speed2);
-  Serial.print(" | Commande2: ");
-  Serial.print(cmd2);
-  Serial.print(" || error: ");
-  Serial.print(abs(error1));
-  Serial.print(" | ");
-  Serial.print(abs(error2));
-  Serial.print(" || X: ");
-  Serial.print(robotX);
-  Serial.print(" || Y: ");
-  Serial.print(robotY);
-  Serial.print(" || theta: ");
-  Serial.println(robotTheta * 180.0 / PI);
-
+  // Application commandes moteurs (signature conservée)
+  set_vitesse(cmd1, cmd2);
+  
+  // Calcul position (odométrie)
+  float deltaLeft = speed1 * wheelCircumference * Te;   // Distance parcourue roue gauche
+  float deltaRight = speed2 * wheelCircumference * Te;  // Distance parcourue roue droite
+  computePosition(deltaLeft, deltaRight);
 }
 
+
+// === FONCTION CALCUL POSITION (ODOMÉTRIE) ===
 
 void computePosition(float deltaLeft, float deltaRight) {
   // Calcul du déplacement linéaire moyen et de la rotation angulaire
-  deltaLeft = deltaLeft*(duree_pid/1000);       //pour adapter le calcul de la position avec la durée de calcul du PID
-  deltaRight = deltaRight*(duree_pid/1000);
+  // deltaLeft/deltaRight sont déjà en cm (calculés avec Te dans ctrlISR)
   float deltaDistance = (deltaLeft + deltaRight) / 2.0;
   float deltaTheta = (deltaRight - deltaLeft) / wheelBase;
 

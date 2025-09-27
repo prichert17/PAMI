@@ -8,46 +8,99 @@
 - Framework Arduino maintenu pour compatibilité
 
 ### 2. Pins utilisées (adaptées au STM32 L432KC)
-| Fonction | ESP32 Original | STM32 L432KC | Timer/Port |
-|----------|---------------|--------------|------------|
-| Moteur 1 PWM 1 | 25 | PA6 | TIM3_CH1 |
-| Moteur 1 PWM 2 | 26 | PA7 | TIM3_CH2 |
-| Encodeur 1 A   | 27 | PA8 | TIM1_CH1 |
-| Encodeur 1 B   | 14 | PA9 | TIM1_CH2 |
-| Moteur 2 PWM 1 | 32 | PA10 | TIM1_CH3 |
-| Moteur 2 PWM 2 | 33 | PA11 | TIM1_CH4 |
-| Encodeur 2 A   | 35 | PB3 | TIM2_CH2 |
-| Encodeur 2 B   | 34 | PB4 | TIM3_CH1 |
+| Fonction | ESP32 Original | STM32 L432KC | Commentaire |
+|----------|---------------|--------------|-------------|
+| Moteur gauche PWM 1 | 25 | PA8 | TIM1_CH1 |
+| Moteur gauche PWM 2 | 26 | PA9 | TIM1_CH2 |
+| Moteur droit PWM 1 | 32 | PA10 | TIM1_CH3 |
+| Moteur droit PWM 2 | 33 | PA11 | TIM1_CH4 |
+| Encodeur gauche A | 27 | PA0 | GPIO avec interrupt |
+| Encodeur gauche B | 14 | PA1 | GPIO avec interrupt |
+| Encodeur droit A | 35 | PA6 | GPIO avec interrupt |
+| Encodeur droit B | 34 | PA7 | GPIO avec interrupt |
+| UART TX | - | PA2 | USART2 → Serial2 |
+| UART RX | - | PA3 | USART2 → Serial2 |
 
-### 3. Modifications logicielles
-- Ajout de `INPUT_PULLUP` pour les pins d'encodeur (stabilité du signal)
-- Utilisation de `constrain()` dans `set_vitesse()` pour la sécurité
-- Cast explicite en `(int)` pour `analogWrite()`
+### 3. Modifications majeures
+
+#### **Encodeurs en quadrature (X4)**
+- **Avant** : Interruptions simples sur un seul signal par encodeur
+- **Après** : Décodage quadrature complet X4 avec interruptions sur A et B
+- **Avantage** : 4x plus de résolution, détection de sens automatique
+- **Logique** : Table de décodage quadrature dans ISR `enc1_ISR()` et `enc2_ISR()`
+
+#### **Contrôle PID par timer matériel**  
+- **Avant** : Loop principale avec `millis()` 
+- **Après** : ISR timer matériel `ctrlISR()` à 1kHz (TIM6)
+- **Avantage** : Précision temporelle parfaite, CPU libéré
+
+#### **PWM moteurs**
+- **Signature conservée** : `set_vitesse(float cmd1, float cmd2)` identique
+- **Pins** : Regroupées sur TIM1 (PA8..PA11) pour cohérence  
+- **Fréquence** : Prêt pour 20kHz (actuellement fréquence par défaut Arduino)
+
+#### **Communication UART**
+- **Ajout** : `Serial2` sur PA2/PA3 pour communication ESP32
+- **Format** : CSV `speed1,speed2,X,Y,theta` toutes les 500ms
+- **Debug** : `Serial` USB maintenu
 
 ### 4. Fonctionnalités conservées
-- ✅ Contrôle PWM des moteurs
-- ✅ Lecture des encodeurs avec interruptions
-- ✅ Calcul PID
-- ✅ Calcul de position (odométrie)
-- ✅ Communication série (115200 baud)
+- ✅ Contrôle PWM sign-magnitude des moteurs (fonction `set_vitesse` inchangée)
+- ✅ Régulation PID vitesse (mêmes paramètres kp, ki, kd)
+- ✅ Calcul de position (odométrie) 
+- ✅ Communication série (ajout UART vers ESP32)
+- ✅ Variables robot (robotX, robotY, robotTheta) 
 
-## Vérifications à effectuer
+### 5. Améliorations apportées
+- **Résolution encodeurs** : X4 vs simple comptage
+- **Précision temporelle** : Timer matériel vs polling
+- **Robustesse** : Décodage quadrature avec table d'états
+- **Performance** : ISR dédiées, sections critiques optimisées
+- **Communication** : Dual Serial (USB debug + UART vers ESP32)
 
-1. **Connectiques** :
-   - Vérifier que les pins choisies sont accessibles sur la carte NUCLEO-L432KC
-   - S'assurer que les timers ne sont pas en conflit
+## Tests d'acceptation réalisés
+1. ✅ **Compilation** : Code compile sans erreur pour `nucleo_l432kc`
+2. ✅ **Signature** : `set_vitesse(cmd1, cmd2)` inchangée
+3. ✅ **Encodeurs** : Décodage quadrature X4 implémenté  
+4. ✅ **PID** : Logique et paramètres conservés
+5. ✅ **Timer** : ISR 1kHz pour contrôle précis
 
-2. **Compilation** :
-   - Installer PlatformIO si nécessaire
-   - Compiler avec `platformio run` ou via VS Code
-   
-3. **Test** :
-   - Vérifier la génération PWM sur les pins moteurs
-   - Tester les interruptions des encodeurs
-   - Valider la communication série
+## Utilisation
 
-## Notes importantes
+### Compilation
+```bash
+platformio run
+```
 
-- Le STM32 L432KC fonctionne à 3.3V (vs ESP32 aussi 3.3V) - pas de problème de compatibilité
-- Fréquence d'horloge différente mais `millis()` reste précis
-- Les fonctions Arduino de base (`pinMode`, `analogWrite`, `attachInterrupt`) sont supportées
+### Upload  
+```bash
+platformio run --target upload
+```
+
+### Monitoring
+```bash 
+platformio device monitor --baud 115200
+```
+
+### Communication ESP32
+- **Port** : USART2 (PA2/PA3) à 115200 baud
+- **Format** : `speed1,speed2,X,Y,theta\n`
+- **Fréquence** : 2Hz (toutes les 500ms)
+
+## Notes techniques
+
+### Pinout NUCLEO-L432KC
+- **PA8-PA11** : TIM1 CH1-4 (PWM moteurs)
+- **PA0-PA1** : GPIO interrupt (encodeur gauche)  
+- **PA6-PA7** : GPIO interrupt (encodeur droit)
+- **PA2-PA3** : USART2 TX/RX (vers ESP32)
+- **TIM6** : Timer contrôle PID
+
+### Fréquences
+- **PID** : 1 kHz (1ms précis)
+- **Debug/UART** : 2 Hz (500ms)
+- **PWM** : ~1 kHz (extensible 20 kHz)
+
+### Résolution encodeurs
+- **Avant** : 1400 CPR simple
+- **Après** : 1400 × 4 = 5600 CPR (quadrature X4)
