@@ -1,13 +1,12 @@
-/* NUCLEO-L432KC - RÉGULATION PID MOTEUR SIMPLE
+/* NUCLEO-G431KB - RÉGULATION PID MOTEUR SIMPLE
  * PID en boucle fermée avec un seul moteur + encodeur TIM2
- * ÉVITE PA2/PA3 pour pas de conflit ST-LINK VCP
  * Moteur: D9=PA8 (+), D3=PB0 (-)
  * Encodeur: A0=PA0 (TIM2_CH1), A1=PA1 (TIM2_CH2)
  */
 
 #include <Arduino.h>
 extern "C" {
-  #include "stm32l4xx_hal.h"
+  #include "stm32g4xx_hal.h"  // Changé de stm32l4xx_hal.h
 }
 
 // Pins PWM pour moteur (seulement le droit)
