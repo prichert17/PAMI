@@ -38,6 +38,7 @@ float errorSum = 0.0f,           errorSum_L = 0.0f;
 float pidOutput = 0.0f,          pidOutput_L = 0.0f;
 int32_t encoderCount = 0,        encoderCount_L = 0;
 int32_t lastEncoderCount = 0,    lastEncoderCount_L = 0;
+uint32_t encoderOffset = 0;  // Référence initiale pour encodeur droit
 
 
 // ===== PARAMÈTRES COMMUNS =====
@@ -121,8 +122,8 @@ void MX_TIM2_Encoder_Init() {
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   HAL_TIM_Encoder_Init(&htim2, &sConfig);
-  __HAL_TIM_SET_COUNTER(&htim2, ENC_MID);
   HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
+  __HAL_TIM_SET_COUNTER(&htim2, ENC_MID);  // Réinitialisation APRÈS le démarrage
 }
 
 // ENCODEUR MOTEUR GAUCHE (TIM3)
@@ -153,8 +154,8 @@ void MX_TIM3_Encoder_Init() {
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   HAL_TIM_Encoder_Init(&htim3, &sConfig);
-  __HAL_TIM_SET_COUNTER(&htim3, ENC_MID_16);
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
+  __HAL_TIM_SET_COUNTER(&htim3, ENC_MID_16);  // Réinitialisation APRÈS le démarrage
 }
 
 // ===============================================================
@@ -205,6 +206,9 @@ void setup() {
   MX_TIM2_Encoder_Init();
   MX_TIM3_Encoder_Init();
   
+  // Sauvegarder la valeur initiale de l'encodeur droit comme référence
+  encoderOffset = __HAL_TIM_GET_COUNTER(&htim2);
+  
   delay(1000);
   Serial.println("=== SOLUTION HYBRIDE HAL + ARDUINO ===");
   
@@ -217,8 +221,14 @@ void loop() {
     static unsigned long lastDisplayTime = 0;
 
     // --- Lecture des encodeurs ---
-    encoderCount = (int32_t)__HAL_TIM_GET_COUNTER(&htim2) - (int32_t)ENC_MID;
-    encoderCount_L = (int32_t)__HAL_TIM_GET_COUNTER(&htim3) - (int32_t)ENC_MID_16;
+    uint32_t rawCount = __HAL_TIM_GET_COUNTER(&htim2);
+    encoderCount = (int32_t)(rawCount - encoderOffset);
+    
+    // Encodeur gauche avec gestion overflow 16 bits
+    uint16_t rawCount_L = __HAL_TIM_GET_COUNTER(&htim3);
+    int16_t delta_raw = (int16_t)(rawCount_L - (uint16_t)ENC_MID_16);
+    encoderCount_L += delta_raw;  // Accumulation pour éviter l'overflow
+    __HAL_TIM_SET_COUNTER(&htim3, ENC_MID_16);  // Reset pour prochaine lecture
 
     // --- Boucle PID (toutes les 50ms) ---
     if (millis() - lastPidTime >= (unsigned long)(DT_S * 1000)) {
@@ -262,7 +272,8 @@ void loop() {
             errorSum = 0.0f; errorSum_L = 0.0f;
         }
         Serial.print("D: M="); Serial.print(currentSpeed_rps, 1); Serial.print(",P="); Serial.print(pidOutput, 0);
-        Serial.print(" | G: M="); Serial.print(currentSpeed_rps_L, 1); Serial.print(",P="); Serial.println(pidOutput_L, 0);
+        Serial.print(" | G: M="); Serial.print(currentSpeed_rps_L, 1); Serial.print(",P="); Serial.print(pidOutput_L, 0);
+        Serial.print(" | Enc: D="); Serial.print(encoderCount); Serial.print(",G="); Serial.println(encoderCount_L);
         lastDisplayTime = millis();
     }
     delay(10);
