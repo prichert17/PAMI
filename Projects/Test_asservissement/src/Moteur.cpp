@@ -13,8 +13,10 @@ extern "C" {
 const uint8_t M_PWM_P = D9;   // TIM1_CH1  (PA8)  - Moteur +
 const uint8_t M_PWM_N = D3;   // TIM1_CH2N (PB0)  - Moteur -
 
-// Encodeur TIM2
+// Encodeur TIM2 (moteur droit)
 TIM_HandleTypeDef htim2;
+// Encodeur TIM3 (moteur gauche - D11/D12)
+TIM_HandleTypeDef htim3;
 static constexpr uint32_t ENC_MID = 0x7FFFFFFFUL;
 
 // Paramètres encodeur
@@ -37,8 +39,11 @@ float currentSpeed_rps = 0.0f; // Vitesse mesurée
 float error = 0.0f, errorPrev = 0.0f, errorSum = 0.0f;
 float pidOutput = 0.0f;
 
-// Variables encodeur
+// Variables encodeur moteur droit
 int32_t encoderCount = 0, lastEncoderCount = 0;
+// Variables encodeur moteur gauche
+int32_t encoderCountLeft = 0, lastEncoderCountLeft = 0;
+float currentSpeedLeft_rps = 0.0f;
 unsigned long compteur = 0;
 
 // Configuration encodeur TIM2
@@ -78,6 +83,44 @@ void MX_TIM2_Encoder_Init() {
   HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
 }
 
+// Configuration encodeur TIM3 (moteur gauche - D11/D12)
+void MX_TIM3_Encoder_Init() {
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_TIM3_CLK_ENABLE();
+
+  // D11 = PB4 (TIM3_CH1), D12 = PB5 (TIM3_CH2)
+  GPIO_InitTypeDef GPIO_InitStruct{};
+  GPIO_InitStruct.Pin       = GPIO_PIN_4 | GPIO_PIN_5;
+  GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull      = GPIO_PULLUP;
+  GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  TIM_Encoder_InitTypeDef sConfig{};
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity  = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter    = 2;
+  sConfig.IC2Polarity  = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter    = 2;
+
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler         = 0;
+  htim3.Init.CounterMode       = TIM_COUNTERMODE_UP;
+  htim3.Init.Period            = 0xFFFFFFFFUL;
+  htim3.Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.RepetitionCounter = 0;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+
+  HAL_TIM_Encoder_Init(&htim3, &sConfig);
+  __HAL_TIM_SET_COUNTER(&htim3, ENC_MID);
+  HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
+}
+
 // Appliquer commande PWM moteur
 void setMotorPWM(float cmd) {
   // Saturer à ±255
@@ -102,12 +145,14 @@ void setup() {
   digitalWrite(LED_BUILTIN, HIGH);
   
   MX_TIM2_Encoder_Init();
+  MX_TIM3_Encoder_Init();
   
   delay(1000);
   
   Serial.println("=== RÉGULATION PID MOTEUR ===");
   Serial.println("Moteur: D9(+) / D3(-)");
-  Serial.println("Encodeur: A0/A1 (TIM2)");
+  Serial.println("Encodeur droit: A0/A1 (TIM2)");
+  Serial.println("Encodeur gauche: D11/D12 (TIM3)");
   Serial.println("Consignes automatiques...");
   Serial.println("==============================");
   
@@ -120,17 +165,26 @@ void loop() {
   static bool ledState = false;
   static uint8_t targetPhase = 0;
   
-  // Lecture encodeur
+  // Lecture encodeur droit
   uint32_t rawCount = __HAL_TIM_GET_COUNTER(&htim2);
   encoderCount = (int32_t)rawCount - (int32_t)ENC_MID;
+  
+  // Lecture encodeur gauche
+  uint32_t rawCountLeft = __HAL_TIM_GET_COUNTER(&htim3);
+  encoderCountLeft = (int32_t)rawCountLeft - (int32_t)ENC_MID;
   
   // Calcul PID toutes les 50ms
   if (millis() - lastPidTime >= (unsigned long)(DT_S * 1000)) {
     
-    // Calculer vitesse actuelle en tr/s
+    // Calculer vitesse actuelle moteur droit en tr/s
     int32_t deltaEnc = encoderCount - lastEncoderCount;
     lastEncoderCount = encoderCount;
     currentSpeed_rps = (float)deltaEnc / TICKS_PER_REV / DT_S;
+    
+    // Calculer vitesse actuelle moteur gauche en tr/s
+    int32_t deltaEncLeft = encoderCountLeft - lastEncoderCountLeft;
+    lastEncoderCountLeft = encoderCountLeft;
+    currentSpeedLeft_rps = (float)deltaEncLeft / TICKS_PER_REV / DT_S;
     
     // Calcul PID
     error = targetSpeed_rps - currentSpeed_rps;
@@ -174,14 +228,18 @@ void loop() {
     // Affichage PID
     Serial.print("Consigne: ");
     Serial.print(targetSpeed_rps, 1);
-    Serial.print(" | Mesure: ");
+    Serial.print(" | Mesure D: ");
     Serial.print(currentSpeed_rps, 2);
+    Serial.print(" | Mesure G: ");
+    Serial.print(currentSpeedLeft_rps, 2);
     Serial.print(" | Erreur: ");
     Serial.print(error, 2);
     Serial.print(" | PWM: ");
     Serial.print(pidOutput, 0);
-    Serial.print(" | Enc: ");
-    Serial.println(encoderCount);
+    Serial.print(" | Enc D: ");
+    Serial.print(encoderCount);
+    Serial.print(" | Enc G: ");
+    Serial.println(encoderCountLeft);
     
     lastDisplayTime = millis();
   }
