@@ -9,9 +9,13 @@ extern "C" {
   #include "stm32g4xx_hal.h"  // Changé de stm32l4xx_hal.h
 }
 
-// Pins PWM pour moteur (seulement le droit)
-const uint8_t M_PWM_P = D9;   // TIM1_CH1  (PA8)  - Moteur +
-const uint8_t M_PWM_N = D3;   // TIM1_CH2N (PB0)  - Moteur -
+// Pins PWM pour moteur droit
+const uint8_t M_PWM_P = D9;   // TIM1_CH1  (PA8)  - Moteur droit +
+const uint8_t M_PWM_N = D3;   // TIM1_CH2N (PB0)  - Moteur droit -
+
+// Pins PWM pour moteur gauche
+const uint8_t M_LEFT_PWM_P = D6;   // Moteur gauche +
+const uint8_t M_LEFT_PWM_N = D4;   // Moteur gauche -
 
 // Encodeur TIM2 (moteur droit)
 TIM_HandleTypeDef htim2;
@@ -28,22 +32,32 @@ static constexpr float TICKS_PER_REV = (CPR_MOTOR * QUAD_FACTOR) / GEAR_RATIO; /
 // Paramètres PID
 static constexpr float DT_S = 0.050f; // 50ms période PID
 
-// Gains PID (ajustés pour votre moteur)
+// Gains PID moteur droit
 float kp = 0.8f;  // Proportionnel
 float ki = 0.2f;  // Intégral  
 float kd = 0.1f;  // Dérivée
 
-// Variables PID
+// Gains PID moteur gauche
+float kp_left = 0.8f;
+float ki_left = 0.2f;
+float kd_left = 0.1f;
+
+// Variables PID moteur droit
 float targetSpeed_rps = 0.0f;  // Consigne vitesse en tr/s
 float currentSpeed_rps = 0.0f; // Vitesse mesurée
 float error = 0.0f, errorPrev = 0.0f, errorSum = 0.0f;
 float pidOutput = 0.0f;
 
+// Variables PID moteur gauche
+float targetSpeedLeft_rps = 0.0f;
+float currentSpeedLeft_rps = 0.0f;
+float errorLeft = 0.0f, errorPrevLeft = 0.0f, errorSumLeft = 0.0f;
+float pidOutputLeft = 0.0f;
+
 // Variables encodeur moteur droit
 int32_t encoderCount = 0, lastEncoderCount = 0;
 // Variables encodeur moteur gauche
 int32_t encoderCountLeft = 0, lastEncoderCountLeft = 0;
-float currentSpeedLeft_rps = 0.0f;
 unsigned long compteur = 0;
 
 // Configuration encodeur TIM2
@@ -121,7 +135,7 @@ void MX_TIM3_Encoder_Init() {
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
 }
 
-// Appliquer commande PWM moteur
+// Appliquer commande PWM moteur droit
 void setMotorPWM(float cmd) {
   // Saturer à ±255
   if (cmd > 255.0f) cmd = 255.0f;
@@ -136,11 +150,28 @@ void setMotorPWM(float cmd) {
   }
 }
 
+// Appliquer commande PWM moteur gauche
+void setMotorLeftPWM(float cmd) {
+  // Saturer à ±255
+  if (cmd > 255.0f) cmd = 255.0f;
+  if (cmd < -255.0f) cmd = -255.0f;
+  
+  if (cmd >= 0) {
+    analogWrite(M_LEFT_PWM_P, (int)cmd);
+    analogWrite(M_LEFT_PWM_N, 0);
+  } else {
+    analogWrite(M_LEFT_PWM_P, 0);
+    analogWrite(M_LEFT_PWM_N, (int)(-cmd));
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   
   pinMode(M_PWM_P, OUTPUT);
   pinMode(M_PWM_N, OUTPUT);
+  pinMode(M_LEFT_PWM_P, OUTPUT);
+  pinMode(M_LEFT_PWM_N, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
   
@@ -150,13 +181,15 @@ void setup() {
   delay(1000);
   
   Serial.println("=== RÉGULATION PID MOTEUR ===");
-  Serial.println("Moteur: D9(+) / D3(-)");
+  Serial.println("Moteur droit: D9(+) / D3(-)");
+  Serial.println("Moteur gauche: A2(+) / D2(-)");
   Serial.println("Encodeur droit: A0/A1 (TIM2)");
   Serial.println("Encodeur gauche: D11/D12 (TIM3)");
   Serial.println("Consignes automatiques...");
   Serial.println("==============================");
   
-  setMotorPWM(0); // Moteur arrêté
+  setMotorPWM(0); // Moteur droit arrêté
+  setMotorLeftPWM(0); // Moteur gauche arrêté
 }
 
 void loop() {
@@ -181,12 +214,12 @@ void loop() {
     lastEncoderCount = encoderCount;
     currentSpeed_rps = (float)deltaEnc / TICKS_PER_REV / DT_S;
     
-    // Calculer vitesse actuelle moteur gauche en tr/s
+    // Calculer vitesse actuelle moteur gauche en tr/s (avec inversion si nécessaire)
     int32_t deltaEncLeft = encoderCountLeft - lastEncoderCountLeft;
     lastEncoderCountLeft = encoderCountLeft;
     currentSpeedLeft_rps = (float)deltaEncLeft / TICKS_PER_REV / DT_S;
     
-    // Calcul PID
+    // Calcul PID moteur droit
     error = targetSpeed_rps - currentSpeed_rps;
     errorSum += error * DT_S;
     float errorDiff = (error - errorPrev) / DT_S;
@@ -198,8 +231,23 @@ void loop() {
     if (errorSum > 100.0f) errorSum = 100.0f;
     if (errorSum < -100.0f) errorSum = -100.0f;
     
-    // Appliquer au moteur
+    // Appliquer au moteur droit
     setMotorPWM(pidOutput);
+    
+    // Calcul PID moteur gauche
+    errorLeft = targetSpeedLeft_rps - currentSpeedLeft_rps;
+    errorSumLeft += errorLeft * DT_S;
+    float errorDiffLeft = (errorLeft - errorPrevLeft) / DT_S;
+    
+    pidOutputLeft = kp_left * errorLeft + ki_left * errorSumLeft + kd_left * errorDiffLeft;
+    errorPrevLeft = errorLeft;
+    
+    // Saturation anti-windup simple
+    if (errorSumLeft > 100.0f) errorSumLeft = 100.0f;
+    if (errorSumLeft < -100.0f) errorSumLeft = -100.0f;
+    
+    // Appliquer au moteur gauche
+    setMotorLeftPWM(pidOutputLeft);
     
     lastPidTime = millis();
   }
@@ -215,14 +263,35 @@ void loop() {
       targetPhase = (targetPhase + 1) % 5;
       
       switch(targetPhase) {
-        case 0: targetSpeed_rps = 0.0f; Serial.println(">> CONSIGNE: 0 tr/s (ARRÊT)"); break;
-        case 1: targetSpeed_rps = 30.0f; Serial.println(">> CONSIGNE: 1 tr/s (LENT +)"); break;
-        case 2: targetSpeed_rps = 0.0f; Serial.println(">> CONSIGNE: -1 tr/s (LENT -)"); break;
-        case 3: targetSpeed_rps = -30.0f; Serial.println(">> CONSIGNE: 2 tr/s (RAPIDE +)"); break;
-        case 4: targetSpeed_rps = -50.0f; Serial.println(">> CONSIGNE: -2 tr/s (RAPIDE -)"); break;
+        case 0: 
+          targetSpeed_rps = 0.0f; 
+          targetSpeedLeft_rps = 0.0f;
+          Serial.println(">> CONSIGNE: 0 tr/s (ARRÊT)"); 
+          break;
+        case 1: 
+          targetSpeed_rps = 30.0f; 
+          targetSpeedLeft_rps = 30.0f;
+          Serial.println(">> CONSIGNE: 1 tr/s (LENT +)"); 
+          break;
+        case 2: 
+          targetSpeed_rps = 0.0f; 
+          targetSpeedLeft_rps = 0.0f;
+          Serial.println(">> CONSIGNE: -1 tr/s (LENT -)"); 
+          break;
+        case 3: 
+          targetSpeed_rps = -30.0f; 
+          targetSpeedLeft_rps = -30.0f;
+          Serial.println(">> CONSIGNE: 2 tr/s (RAPIDE +)"); 
+          break;
+        case 4: 
+          targetSpeed_rps = -50.0f; 
+          targetSpeedLeft_rps = -50.0f;
+          Serial.println(">> CONSIGNE: -2 tr/s (RAPIDE -)"); 
+          break;
       }
       // Reset intégrateur à chaque changement
       errorSum = 0.0f;
+      errorSumLeft = 0.0f;
     }
     
     // Affichage PID
@@ -232,10 +301,10 @@ void loop() {
     Serial.print(currentSpeed_rps, 2);
     Serial.print(" | Mesure G: ");
     Serial.print(currentSpeedLeft_rps, 2);
-    Serial.print(" | Erreur: ");
-    Serial.print(error, 2);
-    Serial.print(" | PWM: ");
+    Serial.print(" | PWM D: ");
     Serial.print(pidOutput, 0);
+    Serial.print(" | PWM G: ");
+    Serial.print(pidOutputLeft, 0);
     Serial.print(" | Enc D: ");
     Serial.print(encoderCount);
     Serial.print(" | Enc G: ");
