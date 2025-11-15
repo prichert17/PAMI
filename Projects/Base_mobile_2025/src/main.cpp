@@ -49,6 +49,10 @@ int main(void)
 
     odometry.attach_serial(&serial);
     asserv.attach_serial(&serial);
+    
+    // Activer le mode différentiel (base à 2 roues)
+    odometry.set_mode_differentiel(true);
+    asserv.set_mode_differentiel(true);
 
     HAL_TIM_Base_Start_IT(&htim6);
     HAL_TIM_Base_Start_IT(&htim15);

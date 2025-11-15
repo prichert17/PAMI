@@ -18,6 +18,12 @@ class Odometry{
     private:
         std::array<Wheel, 3> wheels;    // Array of the wheels of the robot
         SerialOut *serial;              // Pointer to the serial output
+        
+        // Variables pour odométrie différentielle
+        int32_t last_ticks_droit;
+        int32_t last_ticks_gauche;
+        bool mode_differentiel;  // Flag pour basculer entre holonome et différentiel
+        
     protected:
         Vector2DAndRotation position_now;   // Position of the robot now
         Vector2DAndRotation position_last;  // Position of the robot at the last period
@@ -36,6 +42,17 @@ class Odometry{
          * @brief Update the odometry of the robot - Must be called at a fixed frequency in an interrupt
          */
         void update_odometry();
+
+        /**
+         * @brief Update the odometry for differential drive
+         */
+        void update_odometry_differentielle();
+
+        /**
+         * @brief Set the differential drive mode
+         * @param enable true to enable differential mode, false for holonomic mode
+         */
+        void set_mode_differentiel(bool enable);
 
         /**
          * @brief Print the position of the robot

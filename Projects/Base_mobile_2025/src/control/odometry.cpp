@@ -4,6 +4,9 @@
 Odometry::Odometry(std::array<Wheel, 3> wheels):
     wheels(wheels),
     serial(NULL),
+    last_ticks_droit(0),
+    last_ticks_gauche(0),
+    mode_differentiel(false),
     position_now(Vector2DAndRotation(0.0, 0.0, 0.0)),
     position_last(Vector2DAndRotation(0.0, 0.0, 0.0)),
     speed_now(Vector2DAndRotation(0.0, 0.0, 0.0)),
@@ -12,7 +15,64 @@ Odometry::Odometry(std::array<Wheel, 3> wheels):
     HAL_TIM_Base_Start_IT(&htim6);
 }
 
+void Odometry::set_mode_differentiel(bool enable) {
+    mode_differentiel = enable;
+    if (enable) {
+        // Initialiser les dernières positions des encodeurs
+        last_ticks_droit = wheels[0].get_nb_step_now();   // Moteur 1 (Droit)
+        last_ticks_gauche = wheels[1].get_nb_step_now();  // Moteur 2 (Gauche)
+    }
+}
+
+void Odometry::update_odometry_differentielle(){
+    // Odométrie différentielle pour base à 2 roues
+    
+    // 1. Lire les ticks des deux moteurs
+    int32_t ticks_droit = wheels[0].get_nb_step_now();   // Moteur 1 (TIM1) - Roue Droite
+    int32_t ticks_gauche = wheels[1].get_nb_step_now();  // Moteur 2 (TIM2) - Roue Gauche
+    
+    // 2. Calculer le delta en ticks
+    int32_t delta_ticks_D = ticks_droit - last_ticks_droit;
+    int32_t delta_ticks_G = ticks_gauche - last_ticks_gauche;
+    
+    // 3. Convertir en distance (mm)
+    double delta_D = delta_ticks_D * CONSTANTS::DISTANCE_PAR_TICK;
+    double delta_G = delta_ticks_G * CONSTANTS::DISTANCE_PAR_TICK;
+    
+    // 4. Sauvegarder les positions actuelles
+    last_ticks_droit = ticks_droit;
+    last_ticks_gauche = ticks_gauche;
+    
+    // 5. Calculer le déplacement
+    double delta_dist = (delta_D + delta_G) / 2.0;
+    double delta_theta = (delta_D - delta_G) / CONSTANTS::ENTRE_AXE;
+    
+    // 6. Mettre à jour la pose (intégration avec approximation au milieu de l'arc)
+    position_last = position_now;
+    position_now.x_y.x += delta_dist * cos(position_now.teta + delta_theta / 2.0);
+    position_now.x_y.y += delta_dist * sin(position_now.teta + delta_theta / 2.0);
+    position_now.teta += delta_theta;
+    
+    // 7. Normaliser theta entre -PI et PI
+    while (position_now.teta > 3.14159265358979323846) position_now.teta -= 2.0 * 3.14159265358979323846;
+    while (position_now.teta < -3.14159265358979323846) position_now.teta += 2.0 * 3.14159265358979323846;
+    
+    // 8. Calculer la vitesse du robot
+    speed_now = (position_now - position_last) * CONSTANTS::ODOMETRY_FREQ;
+    
+    // 9. Filtrer la vitesse
+    speed_filter.add_elem(speed_now);
+    speed_filtered = speed_filter.get_average();
+}
+
 void Odometry::update_odometry(){
+    // Choisir la méthode d'odométrie selon le mode
+    if (mode_differentiel) {
+        update_odometry_differentielle();
+        return;
+    }
+    
+    // ========== MODE HOLONOME (ancien code conservé) ==========
     // CPU time : 1.79%
 
     Vector2DAndRotation local_displacement; // Displacement of the robot in the local frame of reference

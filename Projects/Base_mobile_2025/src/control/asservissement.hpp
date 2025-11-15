@@ -59,6 +59,7 @@ class Asserv_Position{
         double I;
         double D;
         bool asserv_started;
+        bool mode_differentiel;  // Flag pour basculer entre holonome et différentiel
 
     public:
         Asserv_Position(Odometry *odometry, std::array<Wheel, 3> *wheels);
@@ -72,9 +73,11 @@ class Asserv_Position{
 
         void set_motors_power_relative(Vector2DAndRotation power);
         void set_motors_power_absolute(Vector2DAndRotation power);
+        void set_motors_power_absolute_differentiel(Vector2DAndRotation power);
         void command_limiter(double max_power);
         void attach_serial(SerialOut *_serial);
         void print_command();
+        void set_mode_differentiel(bool enable);
 };
 
 #endif

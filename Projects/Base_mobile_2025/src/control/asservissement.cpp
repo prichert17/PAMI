@@ -75,10 +75,39 @@ Asserv_Position::Asserv_Position(Odometry *odometry, std::array<Wheel, 3> *wheel
     P(0),
     I(0),
     D(0),
-    asserv_started(false)
+    asserv_started(false),
+    mode_differentiel(false)
     {
 
     }
+
+void Asserv_Position::set_mode_differentiel(bool enable) {
+    mode_differentiel = enable;
+}
+
+void Asserv_Position::set_motors_power_absolute_differentiel(Vector2DAndRotation power){
+    // Rotation du vecteur de commande dans le repère local du robot
+    Vector2DAndRotation power_loc = power.rotate_only_vector(-odometry->get_position().teta);
+    
+    // Extraction des consignes
+    double consigne_vx = power_loc.x_y.x;           // Vitesse linéaire (avant/arrière)
+    double consigne_v_theta = power_loc.teta;       // Vitesse angulaire (rotation)
+    
+    // Cinématique inverse différentielle
+    // Moteur 1 = Droit (wheels[0])
+    double target_speed_motor1 = consigne_vx + (consigne_v_theta * CONSTANTS::ENTRE_AXE / 2.0);
+    
+    // Moteur 2 = Gauche (wheels[1])
+    double target_speed_motor2 = consigne_vx - (consigne_v_theta * CONSTANTS::ENTRE_AXE / 2.0);
+    
+    // Moteur 3 = Forcé à 0 (wheels[2]) - Conservé mais inactif
+    double target_speed_motor3 = 0.0;
+    
+    // Appliquer les consignes aux moteurs
+    (*wheels)[0].set_motor_power((int32_t)target_speed_motor1);  // Moteur Droit
+    (*wheels)[1].set_motor_power((int32_t)target_speed_motor2);  // Moteur Gauche
+    (*wheels)[2].set_motor_power((int32_t)target_speed_motor3);  // Moteur 3 à 0
+}
 
 void Asserv_Position::set_PID(double P, double I, double D){
     this->P = P;
@@ -101,7 +130,13 @@ void Asserv_Position::update_asserv(){
     command = error_P*P + error_I*I + error_D*D;
     command.teta /= CONSTANTS::ROTATION_DYNAMIC_RANGE;
     command_limiter(1<<16);
-    set_motors_power_absolute(command);
+    
+    // Choisir la cinématique selon le mode
+    if (mode_differentiel) {
+        set_motors_power_absolute_differentiel(command);
+    } else {
+        set_motors_power_absolute(command);  // Mode holonome (ancien code)
+    }
 }
 
 void Asserv_Position::stop_asserv(){

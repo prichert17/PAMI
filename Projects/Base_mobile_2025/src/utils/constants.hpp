@@ -24,6 +24,10 @@ namespace CONSTANTS{
     inline constexpr double ASSERV_FREQ = 100.0;
 
     inline constexpr double ROTATION_DYNAMIC_RANGE = 200.0;
+
+    // Constantes pour base différentielle
+    inline constexpr double ENTRE_AXE = 0.074;  // Distance entre les deux roues en mètres
+    inline constexpr double DISTANCE_PAR_TICK = (2.0 * 3.14159265358979323846 * WHEEL_RADIUS) / ENCODER_STEP_REV;  // Distance parcourue par tick d'encodeur en mm
 }
 
 #endif
