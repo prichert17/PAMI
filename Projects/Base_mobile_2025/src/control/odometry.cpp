@@ -35,9 +35,9 @@ void Odometry::update_odometry_differentielle(){
     int32_t delta_ticks_D = ticks_droit - last_ticks_droit;
     int32_t delta_ticks_G = ticks_gauche - last_ticks_gauche;
     
-    // 3. Convertir en distance (mm)
-    double delta_D = delta_ticks_D * CONSTANTS::DISTANCE_PAR_TICK;
-    double delta_G = delta_ticks_G * CONSTANTS::DISTANCE_PAR_TICK;
+    // 3. Convertir en distance (mm) avec correction odométrique
+    double delta_D = delta_ticks_D * CONSTANTS::DISTANCE_PAR_TICK; //* CONSTANTS::ODOMETRY_CORRECTION_XY;
+    double delta_G = delta_ticks_G * CONSTANTS::DISTANCE_PAR_TICK; //* CONSTANTS::ODOMETRY_CORRECTION_XY;
     
     // 4. Sauvegarder les positions actuelles
     last_ticks_droit = ticks_droit;
