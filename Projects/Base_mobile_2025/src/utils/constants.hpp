@@ -7,7 +7,7 @@ namespace CONSTANTS{
 
     inline constexpr uint8_t WHEEL_NUMBER = 3;
 
-    inline constexpr mm WHEEL_RADIUS = 29.0;
+    inline constexpr mm WHEEL_RADIUS = 21.5;  // Rayon des roues : diamètre 4.3 cm = rayon 2.15 cm = 21.5 mm
 
     inline constexpr mm BASE_RADIUS = 150.0;
 
