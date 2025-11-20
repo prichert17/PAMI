@@ -48,8 +48,8 @@
 //COM_InitTypeDef BspCOMInit;
 
 /* USER CODE BEGIN PV */
-uint32_t lastToggleTime = 0;
-const uint32_t LED_TOGGLE_PERIOD = 250; // Période plus rapide: 250ms
+uint8_t rxByte;
+uint8_t buffer[3] = {0}; // On garde les 3 derniers caractères
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -104,7 +104,9 @@ int main(void)
   MX_TIM17_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  lastToggleTime = HAL_GetTick();
+  // Démarrage de la réception UART sur interruption (1 octet à la fois)
+  // Note: PA9/PA10 sont connectés à USART1
+  HAL_UART_Receive_IT(&huart1, &rxByte, 1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -114,13 +116,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    // Clignotement de la LED - Version plus visible
-    uint32_t currentTime = HAL_GetTick();
-    if (currentTime - lastToggleTime >= LED_TOGGLE_PERIOD)
-    {
-      HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8); // Toggle LD2
-      lastToggleTime = currentTime;
-    }
+    // La LED est gérée par interruption, plus besoin de clignotement ici
   }
   /* USER CODE END 3 */
 }
@@ -172,7 +168,33 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART1)
+  {
+    // Décalage du buffer pour stocker le nouveau caractère
+    buffer[0] = buffer[1];
+    buffer[1] = buffer[2];
+    buffer[2] = rxByte;
 
+    // Détection de "on" (fin de séquence 'o', 'n')
+    // On regarde les deux derniers caractères reçus
+    if (buffer[1] == 'o' && buffer[2] == 'n')
+    {
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+    }
+    
+    // Détection de "off" (fin de séquence 'o', 'f', 'f')
+    // On regarde les trois derniers caractères reçus
+    else if (buffer[0] == 'o' && buffer[1] == 'f' && buffer[2] == 'f')
+    {
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
+    }
+    
+    // Relance la réception pour le prochain caractère
+    HAL_UART_Receive_IT(&huart1, &rxByte, 1);
+  }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header */
