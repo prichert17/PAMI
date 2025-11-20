@@ -45,7 +45,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 
-COM_InitTypeDef BspCOMInit;
+//COM_InitTypeDef BspCOMInit;
 
 /* USER CODE BEGIN PV */
 
@@ -107,9 +107,10 @@ int main(void)
   /* USER CODE END 2 */
 
   /* Initialize leds */
+  /*
   BSP_LED_Init(LED_GREEN);
 
-  /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
+  Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity 
   BspCOMInit.BaudRate   = 115200;
   BspCOMInit.WordLength = COM_WORDLENGTH_8B;
   BspCOMInit.StopBits   = COM_STOPBITS_1;
@@ -119,7 +120,7 @@ int main(void)
   {
     Error_Handler();
   }
-
+  */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
