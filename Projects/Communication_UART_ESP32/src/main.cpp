@@ -28,6 +28,7 @@ void loop() {
   delay(2000);
   
   // Optionnel : Envoyer autre chose pour voir si ça ne déclenche pas
+  Serial.println("Envoi de la commande: off");
   Serial2.print("off");
   delay(2000);
 }
