@@ -48,7 +48,8 @@
 //COM_InitTypeDef BspCOMInit;
 
 /* USER CODE BEGIN PV */
-
+uint32_t lastToggleTime = 0;
+const uint32_t LED_TOGGLE_PERIOD = 250; // Période plus rapide: 250ms
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -103,32 +104,23 @@ int main(void)
   MX_TIM17_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  lastToggleTime = HAL_GetTick();
   /* USER CODE END 2 */
 
-  /* Initialize leds */
-  /*
-  BSP_LED_Init(LED_GREEN);
-
-  Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity 
-  BspCOMInit.BaudRate   = 115200;
-  BspCOMInit.WordLength = COM_WORDLENGTH_8B;
-  BspCOMInit.StopBits   = COM_STOPBITS_1;
-  BspCOMInit.Parity     = COM_PARITY_NONE;
-  BspCOMInit.HwFlowCtl  = COM_HWCONTROL_NONE;
-  if (BSP_COM_Init(COM1, &BspCOMInit) != BSP_ERROR_NONE)
-  {
-    Error_Handler();
-  }
-  */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    // Clignotement de la LED - Version plus visible
+    uint32_t currentTime = HAL_GetTick();
+    if (currentTime - lastToggleTime >= LED_TOGGLE_PERIOD)
+    {
+      HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_8); // Toggle LD2
+      lastToggleTime = currentTime;
+    }
   }
   /* USER CODE END 3 */
 }
