@@ -182,6 +182,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     if (buffer[1] == 'o' && buffer[2] == 'n')
     {
       HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+      uint8_t msg[] = "led allumée\r\n";
+      HAL_UART_Transmit(&huart1, msg, sizeof(msg) - 1, 100);
     }
     
     // Détection de "off" (fin de séquence 'o', 'f', 'f')
@@ -189,6 +191,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     else if (buffer[0] == 'o' && buffer[1] == 'f' && buffer[2] == 'f')
     {
       HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
+      uint8_t msg[] = "led éteinte\r\n";
+      HAL_UART_Transmit(&huart1, msg, sizeof(msg) - 1, 100);
     }
     
     // Relance la réception pour le prochain caractère

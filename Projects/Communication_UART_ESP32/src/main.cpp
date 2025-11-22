@@ -19,16 +19,29 @@ void setup() {
 }
 
 void loop() {
-  Serial.println("Envoi de la commande: on");
-  
-  // Envoi des caractères 'o' puis 'n'
-  Serial2.print("on");
-  
-  // Attendre 2 secondes
-  delay(2000);
-  
-  // Optionnel : Envoyer autre chose pour voir si ça ne déclenche pas
-  Serial.println("Envoi de la commande: off");
-  Serial2.print("off");
-  delay(2000);
+  // Variables statiques pour gérer le temps sans bloquer la boucle
+  static unsigned long previousMillis = 0;
+  static bool toggle = false;
+  const long interval = 2000;
+
+  // 1. Lecture des données reçues de Serial2 (STM32) et renvoi vers Serial (PC)
+  while (Serial2.available()) {
+    char c = Serial2.read();
+    Serial.write(c);
+  }
+
+  // 2. Envoi périodique non bloquant (toutes les 2 secondes)
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+    
+    if (!toggle) {
+      //Serial.println("Envoi de la commande: on");
+      Serial2.print("on");
+    } else {
+      //Serial.println("Envoi de la commande: off");
+      Serial2.print("off");
+    }
+    toggle = !toggle;
+  }
 }
