@@ -1,73 +1,51 @@
 #include "printf.hpp"
 
+// Les fonctions printf() et printf_decimal() sont maintenant définies inline dans le header
+// Ce fichier est conservé pour d'éventuelles fonctions futures
 
-SerialOut::SerialOut(){
-    memset(char_buff, '\0', sizeof(char_buff)); // Initialize buffer to 0
-}
+// Note: Les anciennes implémentations utilisaient huart2 et char_buff qui n'existent plus
+// La nouvelle implémentation dans le header utilise huart1 et un buffer local
 
-void SerialOut::printf(const char *format, ...){
-    memset(char_buff, '\0', sizeof(char_buff)); // TODO: somehow remove this to improve performance
-    int32_t len = snprintf(char_buff, buff_size, format);  // Format the string
-    // If the string is too big to print, print an error message and return
-    if(len < 0 || len > buff_size){
-        snprintf(char_buff, buff_size, "[ERROR] String too big to print!");
-        return;   
-    }
-    // Print the formatted string
-    HAL_UART_Transmit(&huart2, (uint8_t*)char_buff, sizeof(char_buff), 100);
-}
+#ifndef PRINTF_HPP
+#define PRINTF_HPP
 
-void SerialOut::printf_decimal(double _x, int8_t precision){
-    // TODO : check inputs
-    unsigned long int a,b;  // Integer and decimal part of the number
-    double m;    // 
-    double x = _x;   // Copy of the number to print
-    char expo = ' ';    // Exponent of the number
-    int64_t mult = pow(10, precision);  // Multiplier to get the decimal part
-    char s = '+';   // Sign of the number
+#include "usart.h"
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
 
-    // Find the sign of the number
-    if(x < 0.0){
-        s = '-';
-        x = -x;    
-    }
-
-    // Multiply the number by a power of 1000 based on its value
-    if(x>1.0){
-        x = x;
-    }
-    else if(x<1.0 && x>=1e-3){
-        x = x*1e3;
-        expo = 'm'; 
-    }
-    else if(x<1e-3 && x>=1e-6){
-        x = x*1e6;
-        expo = 'u';
-    }
-    else if(x<1e-6 && x>=1e-9){
-        x = x*1e9;
-        expo = 'n';
-    }
-    else if(x<1e-9 && x>=1e-12){
-        x = x*1e12;
-        expo = 'p';
-    }
-    else if(x<1e-12 && x>=1e-15){
-        x = x*1e15;
-        expo = 'f';
-    }
-    else{
-        memset(char_buff, '\0', sizeof(char_buff)); // TODO: somehow remove this to improve performance
-        uint32_t len = snprintf(char_buff, buff_size, "[ERROR] Number too small to print!");    // Format the string
-        HAL_UART_Transmit(&huart2, (uint8_t*)char_buff, sizeof(char)*len, 100);     // Print the formatted string
-        return;
-    }
-
-    m = x*mult; // Multiply by the multiplier
-    a = (int)x; // Get the integer part
-    b = (int)(m-a*mult);    // Get the decimal part
+class SerialOut {
+private:
+    UART_HandleTypeDef* uart;
+    char buffer[256];
     
-    memset(char_buff, '\0', sizeof(char_buff)); // TODO: somehow remove this to improve performance
-    uint32_t len = snprintf(char_buff, buff_size, "%c%lu.%lu%c",s,a,b,expo);    // Format the string
-    HAL_UART_Transmit(&huart2, (uint8_t*)char_buff, sizeof(char)*len, 100);     // Print the formatted string
-}
+public:
+    SerialOut() : uart(&huart1) {}  // Utilisation de UART1
+    
+    void printf(const char* format, ...) {
+        va_list args;
+        va_start(args, format);
+        int len = vsnprintf(buffer, sizeof(buffer), format, args);
+        va_end(args);
+        
+        if (len > 0) {
+            HAL_UART_Transmit(uart, (uint8_t*)buffer, len, 100);
+        }
+    }
+    
+    void send(const char* message) {
+        HAL_UART_Transmit(uart, (uint8_t*)message, strlen(message), 100);
+    }
+    
+    // Fonction pour recevoir des données (bloquante)
+    bool receive(uint8_t* data, uint16_t size, uint32_t timeout = 100) {
+        return HAL_UART_Receive(uart, data, size, timeout) == HAL_OK;
+    }
+    
+    // Fonction pour recevoir des données (non-bloquante avec interruption)
+    bool receive_IT(uint8_t* data, uint16_t size) {
+        return HAL_UART_Receive_IT(uart, data, size) == HAL_OK;
+    }
+};
+
+#endif

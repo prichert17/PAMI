@@ -1,39 +1,40 @@
-#ifndef __PRINTF__
-#define __PRINTF__
+#ifndef PRINTF_HPP
+#define PRINTF_HPP
 
-#include <stdio.h>
-#include <string.h>
-#include <math.h>
 #include "usart.h"
-#include "constants.hpp"
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
 
-/*
-    This class is used to print data to the serial port
-*/
-class SerialOut{
-    private:
-        char char_buff[CONSTANTS::PRINTF_BUFFER_SIZE];  // Buffer to use for serial output
-        const uint32_t buff_size = CONSTANTS::PRINTF_BUFFER_SIZE;   // Size of the buffer
-
-    public:
-        /**
-         * @brief Construct a new SerialOut object
-         */
-        SerialOut();
-
-        /**
-         * @brief Print a formatted string to the serial port
-         * @param format Format string
-         * @param ... Arguments to format
-         * @warning !!! Seems to be broken for all numbers !!!
-         */
-        void printf(const char *format, ...);
-
-        /**
-         * @brief Print a decimal number to the serial port with a given precision
-         * @param _x Number to print
-         */
-        void printf_decimal(double _x, int8_t precision = 9);
+class SerialOut {
+private:
+    UART_HandleTypeDef* uart;
+    char buffer[256];
+    
+public:
+    SerialOut() : uart(&huart1) {}  // Utilisation de UART1 au lieu de UART2
+    
+    void printf(const char* format, ...) {
+        va_list args;
+        va_start(args, format);
+        int len = vsnprintf(buffer, sizeof(buffer), format, args);
+        va_end(args);
+        
+        if (len > 0) {
+            HAL_UART_Transmit(uart, (uint8_t*)buffer, len, 100);
+        }
+    }
+    
+    void printf_decimal(double value, int8_t precision) {
+        char format[20];
+        snprintf(format, sizeof(format), "%%.%df\t", precision);
+        snprintf(buffer, sizeof(buffer), format, value);
+        HAL_UART_Transmit(uart, (uint8_t*)buffer, strlen(buffer), 100);
+    }
+    
+    void send(const char* message) {
+        HAL_UART_Transmit(uart, (uint8_t*)message, strlen(message), 100);
+    }
 };
 
 #endif

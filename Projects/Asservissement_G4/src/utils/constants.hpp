@@ -10,6 +10,8 @@ namespace CONSTANTS{
     inline constexpr mm WHEEL_RADIUS = 29.0;
 
     inline constexpr mm BASE_RADIUS = 150.0;
+    
+    inline constexpr mm WHEEL_BASE = 150.0;  // Distance entre les 2 roues motrices
 
     inline constexpr uint16_t ENCODER_STEP_REV = 1200; 
 

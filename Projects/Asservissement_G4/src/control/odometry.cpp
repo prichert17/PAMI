@@ -1,103 +1,61 @@
 #include "odometry.hpp"
+#include "utils/printf.hpp"
+#include <cmath>
 
-
-Odometry::Odometry(std::array<Wheel, 3> wheels):
-    wheels(wheels),
-    serial(NULL),
-    position_now(Vector2DAndRotation(0.0, 0.0, 0.0)),
-    position_last(Vector2DAndRotation(0.0, 0.0, 0.0)),
-    speed_now(Vector2DAndRotation(0.0, 0.0, 0.0)),
-    speed_filtered(Vector2DAndRotation(0.0, 0.0, 0.0))
+Odometry::Odometry(std::array<Wheel, 3>& wheels)
+    : wheels(&wheels), serial(nullptr), wheel_base(CONSTANTS::WHEEL_BASE),
+      position(0, 0, 0), velocity(0, 0, 0)
 {
-    HAL_TIM_Base_Start_IT(&htim6);
 }
 
-void Odometry::update_odometry(){
-    // CPU time : 1.79%
+void Odometry::attach_serial(SerialOut* serial_ptr) {
+    serial = serial_ptr;
+}
 
-    Vector2DAndRotation local_displacement; // Displacement of the robot in the local frame of reference
-    rad teta = 0.0; // Angular displacement of the robot in the local frame of reference since the last period
-    mm x = 0.0;     // Linear x displacement of the robot in the local frame of reference since the last period
-    mm y = 0.0;     // Linear y displacement of the robot in the local frame of reference since the last period
-
-    // Iterate over all the wheels of the robot:
-    for(auto &wheel : wheels){
-        wheel.update_encoder(); // Update the encoder of the wheel
-        wheel.update_wheel_speed(); // Update the speed of the wheel
-        const mm_per_s wheel_speed = wheel.get_wheel_mms_now();
-        // Compute the contribution of the wheel to the displacement of the robot
-        teta += wheel_speed;
-        x += wheel_speed*wheel.get_wheel_weight_x();
-        y += wheel_speed*wheel.get_wheel_weight_y();
+void Odometry::update_odometry() {
+    static const float dt = 0.002f;  // 500Hz = 2ms
+    
+    // Mise à jour des vitesses des roues
+    for (auto& wheel : *wheels) {
+        wheel.update_speed(dt);
     }
-
-    // Scale the contributions and integrate them over the period to get the displacement of the robot
-    teta *= 1/(3*CONSTANTS::BASE_RADIUS*CONSTANTS::ODOMETRY_FREQ);
-    x /= 3.0*CONSTANTS::ODOMETRY_FREQ;
-    y /= 3.0*CONSTANTS::ODOMETRY_FREQ;
-
-    // Buid a Vector2DAndRotation object with the displacement of the robot
-    local_displacement.teta = teta;
-    local_displacement.x_y = Vector2D(x, y);
-    // Cursed correction to get correct values...
-    local_displacement.x_y.x *= CONSTANTS::ODOMETRY_CORRECTION_XY;
-    local_displacement.x_y.y *= CONSTANTS::ODOMETRY_CORRECTION_XY;
-    // Update the position of the robot in the global frame of reference
-    position_last = position_now;
-    position_now += local_displacement.rotate_only_vector(position_now.teta + local_displacement.teta);
-
-    // Compute the speed of the robot in the global frame of reference
-    speed_now = (position_now-position_last)*CONSTANTS::ODOMETRY_FREQ;
-    // Filter the speed of the robot
-    speed_filter.add_elem(speed_now);
-    speed_filtered = speed_filter.get_average();
+    
+    // Pour 2 roues différentielles (roues 0 et 1)
+    float v_left = (*wheels)[0].get_speed() * CONSTANTS::WHEEL_RADIUS;
+    float v_right = (*wheels)[1].get_speed() * CONSTANTS::WHEEL_RADIUS;
+    
+    // Calcul de la vitesse linéaire et angulaire du robot
+    float v_linear = (v_right + v_left) / 2.0f;
+    float omega = (v_right - v_left) / wheel_base;
+    
+    // Mise à jour de la position
+    position.teta += omega * dt;
+    
+    // Normalisation de l'angle entre -PI et PI
+    while (position.teta > M_PI) position.teta -= 2.0f * M_PI;
+    while (position.teta < -M_PI) position.teta += 2.0f * M_PI;
+    
+    // Mise à jour des coordonnées X et Y
+    position.x_y.x += v_linear * cos(position.teta) * dt;
+    position.x_y.y += v_linear * sin(position.teta) * dt;
+    
+    // Mise à jour des vitesses
+    velocity.x_y.x = v_linear * cos(position.teta);
+    velocity.x_y.y = v_linear * sin(position.teta);
+    velocity.teta = omega;
 }
 
-void Odometry::print_position(){
-    if(serial == NULL) return;
-    serial->printf("Position:\tx: ");
-    serial->printf_decimal(position_now.x_y.x, 9);
-    serial->printf("\ty: ");
-    serial->printf_decimal(position_now.x_y.y, 9);
-    serial->printf("\tteta: ");
-    serial->printf_decimal(position_now.teta, 9);
-    serial->printf("\n");
+void Odometry::print_position() {
+    if (serial) {
+        serial->printf("Pos: X=%.2f Y=%.2f Theta=%.2f\n", 
+                      position.x_y.x,
+                      position.x_y.y,
+                      position.teta * 180.0f / M_PI);
+    }
 }
 
-void Odometry::print_speed(){
-    if(serial == NULL) return;
-    serial->printf("Speed:\tx: ");
-    serial->printf_decimal(speed_now.x_y.x, 9);
-    serial->printf("\ty: ");
-    serial->printf_decimal(speed_now.x_y.y, 9);
-    serial->printf("\tteta: ");
-    serial->printf_decimal(speed_now.teta, 9);
-    serial->printf("\n");
-}
-
-void Odometry::print_speed_filtered(){
-    if(serial == NULL) return;
-    serial->printf("Speed:\tx: ");
-    serial->printf_decimal(speed_filtered.x_y.x, 9);
-    serial->printf("\ty: ");
-    serial->printf_decimal(speed_filtered.x_y.y, 9);
-    serial->printf("\tteta: ");
-    serial->printf_decimal(speed_filtered.teta, 9);
-    serial->printf("\n");
-}
-
-void Odometry::attach_serial(SerialOut *_serial){
-    this->serial = _serial;
-}
-
-Vector2DAndRotation Odometry::get_position(){
-    return position_now;
-}
-
-Vector2DAndRotation Odometry::get_speed_now(){
-    return speed_now;
-}
-
-Vector2DAndRotation Odometry::get_speed_filtered(){
-    return speed_filtered;
+void Odometry::reset_position(float x, float y, float theta) {
+    position.x_y.x = x;
+    position.x_y.y = y;
+    position.teta = theta;
 }
