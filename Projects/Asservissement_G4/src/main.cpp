@@ -1,70 +1,30 @@
-#include "control/motor.hpp"
-#include "control/odometry.hpp"
-#include "control/asservissement.hpp"
 #include "main.hpp"
-#include "utils/printf.hpp"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
-#include "adc.h"
+#include "control/motor.hpp"
 #include <cstring>
 #include <cstdio>
+#include <array>
 
 void SystemClock_Config(void);
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 
-SerialOut serial;
+// Variables globales
+uint8_t rxByte;
+char uart_msg[150];
+char cmd_buffer[20] = {0};
+uint8_t cmd_idx = 0;
 
-// Configuration pour 3 roues (mais on n'utilise que les 2 premières)
+// Moteurs utilisant la classe Wheel
 std::array<Wheel, 3> wheels = {
-    Wheel(1, CONSTANTS::ENCODER_STEP_REV, CONSTANTS::WHEEL_RADIUS, 0.0),      // Roue gauche
-    Wheel(2, CONSTANTS::ENCODER_STEP_REV, CONSTANTS::WHEEL_RADIUS, 180.0),    // Roue droite
-    Wheel(3, CONSTANTS::ENCODER_STEP_REV, CONSTANTS::WHEEL_RADIUS, 90.0)      // Roue 3 (non utilisée)
+    Wheel(1, 1200, 29.0f, 0.0f),     // Moteur 1
+    Wheel(2, 1200, 29.0f, 180.0f),   // Moteur 2
+    Wheel(3, 1200, 29.0f, 0.0f)      // Moteur 3 (réserve)
 };
 
-Odometry odometry(wheels);
-Asserv_Position asserv(&odometry, &wheels);
-
-// Variables pour l'ADC
-uint16_t adc1_value = 0;
-uint16_t adc2_value = 0;
-
-// Variables pour la réception UART
-uint8_t rxByte;
-uint8_t buffer[3] = {0}; // On garde les 3 derniers caractères
-
-// Fonction pour communiquer avec l'autre microcontrôleur via UART1
-void sendToOtherMCU(const char* message) {
-    HAL_UART_Transmit(&huart1, (uint8_t*)message, strlen(message), 100);
-}
-
-// Fonction pour recevoir des données de l'autre microcontrôleur via UART1
-void receiveFromOtherMCU() {
-    // La réception se fait par interruption via HAL_UART_RxCpltCallback
-    // Cette fonction peut être utilisée pour traiter les données reçues si nécessaire
-}
-
-// Fonction pour lire les tensions ADC
-void readADCValues() {
-    // Lecture ADC1_IN15
-    HAL_ADC_Start(&hadc1);
-    if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK) {
-        adc1_value = HAL_ADC_GetValue(&hadc1);
-    }
-    HAL_ADC_Stop(&hadc1);
-    
-    // Lecture ADC2_IN13
-    HAL_ADC_Start(&hadc2);
-    if (HAL_ADC_PollForConversion(&hadc2, 100) == HAL_OK) {
-        adc2_value = HAL_ADC_GetValue(&hadc2);
-    }
-    HAL_ADC_Stop(&hadc2);
-}
-
-// Fonction pour convertir la valeur ADC en tension (en mV)
-float adcToVoltage(uint16_t adc_value) {
-    // Assuming 12-bit ADC and 3.3V reference
-    return (adc_value * 3300.0f) / 4095.0f;
+// Fonction simple pour envoyer un message UART
+void send_uart(const char* msg) {
+    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
 }
 
 int main(void)
@@ -72,74 +32,75 @@ int main(void)
     HAL_Init();
     SystemClock_Config();
 
+    // Initialisation des périphériques
     MX_GPIO_Init();
     MX_TIM1_Init();
     MX_TIM2_Init();
     MX_TIM3_Init();
-    MX_TIM6_Init();
-    MX_TIM8_Init();
-    MX_TIM15_Init();
     MX_TIM16_Init();
-    MX_TIM17_Init();
     MX_USART1_UART_Init();
-    MX_ADC1_Init();
-    MX_ADC2_Init();
 
-    // Initialisation des compteurs encodeurs au milieu de leur plage
-    TIM2->CNT = (1<<15);
-    TIM3->CNT = (1<<15);
-
-    odometry.attach_serial(&serial);
-    asserv.attach_serial(&serial);
-
-    // Démarrage des timers
-    HAL_TIM_Base_Start_IT(&htim6);   // Odométrie 500Hz
-    HAL_TIM_Base_Start_IT(&htim15);  // Timer générique 1Hz
-    HAL_TIM_Base_Start_IT(&htim17);  // Asservissement 100Hz
+    // Initialisation des encodeurs au milieu (32768)
+    TIM2->CNT = 32768;
+    TIM3->CNT = 32768;
 
     // Démarrage des encodeurs
     HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
     HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
 
-    // Démarrage des PWM pour les 2 moteurs principaux
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);      // Moteur 1
-    HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);   // Moteur 1 (canal complémentaire)
-    HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);     // Moteur 2
-    HAL_TIMEx_PWMN_Start(&htim16, TIM_CHANNEL_1);  // Moteur 2 (canal complémentaire)
-    
-    // Moteur 3 en réserve (TIM8)
-    HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
-    HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);
+    // Démarrage des PWM moteurs avec canaux complémentaires
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);       // Moteur 1 CH1
+    HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);    // Moteur 1 CH1N
+    HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);      // Moteur 2 CH1
+    HAL_TIMEx_PWMN_Start(&htim16, TIM_CHANNEL_1);   // Moteur 2 CH1N
 
-    // Configuration de l'asservissement
-    asserv.set_target_position(Vector2DAndRotation(400, 0, 0));
-    asserv.set_PID(250.0, 1000.0, 0.0);
-    asserv.start_asserv();
+    __HAL_TIM_MOE_ENABLE(&htim1);
+    __HAL_TIM_MOE_ENABLE(&htim16);
+    //__HAL_TIM_MOE_ENABLE(&htim8);
 
-    // Démarrage de la réception UART sur interruption (1 octet à la fois)
+    // Initialiser les moteurs à 0
+    wheels[0].set_pwm(0);
+    wheels[1].set_pwm(0);
+
+    // Démarrage réception UART
     HAL_UART_Receive_IT(&huart1, &rxByte, 1);
 
-    // Message de démarrage au autre MCU
-    sendToOtherMCU("System initialized\r\n");
+    // Message de démarrage
+    send_uart("\r\n=== TEST SIMPLE MOTEURS ===\r\n");
+    send_uart("Commandes:\r\n");
+    send_uart("  M1:xxx  -> Moteur 1 PWM 0-255\r\n");
+    send_uart("  M2:xxx  -> Moteur 2 PWM 0-255\r\n");
+    send_uart("  stop    -> Arrêt d'urgence\r\n");
+    send_uart("  on/off  -> LED\r\n");
+    send_uart("===========================\r\n\r\n");
 
     while (1) {
-        odometry.print_position();
-        asserv.print_command();
+        // Calcul de la vitesse toutes les 500ms
+        static uint32_t lastSend = 0;
         
-        // Lecture périodique des ADC
-        readADCValues();
-        
-        // Envoi des valeurs ADC à l'autre MCU toutes les secondes environ
-        static uint32_t lastADCSend = 0;
-        if (HAL_GetTick() - lastADCSend > 1000) {
-            char buffer_adc[100];
-            sprintf(buffer_adc, "ADC1: %.2fmV, ADC2: %.2fmV\r\n", 
-                    adcToVoltage(adc1_value), adcToVoltage(adc2_value));
-            sendToOtherMCU(buffer_adc);
-            lastADCSend = HAL_GetTick();
+        if (HAL_GetTick() - lastSend > 500) {
+            // Mise à jour des vitesses
+            wheels[0].update_speed(0.5f);  // dt = 500ms = 0.5s
+            wheels[1].update_speed(0.5f);
+            
+            // Lecture des encodeurs et vitesses
+            int32_t enc1 = wheels[0].get_encoder_count();
+            int32_t enc2 = wheels[1].get_encoder_count();
+            float speed1 = wheels[0].get_speed();  // rad/s
+            float speed2 = wheels[1].get_speed();
+            
+            // Conversion rad/s -> ticks/s pour comparaison
+            int32_t speed1_ticks = (int32_t)(speed1 * 1200 / (2.0f * M_PI));
+            int32_t speed2_ticks = (int32_t)(speed2 * 1200 / (2.0f * M_PI));
+            
+            sprintf(uart_msg, "ENC1:%6ld | ENC2:%6ld | SPD1:%5ld | SPD2:%5ld ticks/s\r\n", 
+                    enc1, enc2, speed1_ticks, speed2_ticks);
+            send_uart(uart_msg);
+            
+            lastSend = HAL_GetTick();
         }
 
-        HAL_Delay(200);
+        HAL_Delay(10);
     }
 }
 
@@ -178,51 +139,64 @@ void SystemClock_Config(void)
     }
 }
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-    // Timer générique [1Hz]
-    if(htim->Instance == htim15.Instance){
-        // Actions périodiques toutes les secondes
-    }
-
-    // Asservissement [100Hz]
-    if(htim->Instance == htim17.Instance){
-        asserv.update_asserv();
-    }
-
-    // Odométrie [500Hz]
-    if(htim->Instance == htim6.Instance){
-        odometry.update_odometry();
-    }
-}
-
 // Callback de réception UART
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)
     {
-        // Décalage du buffer pour stocker le nouveau caractère
-        buffer[0] = buffer[1];
-        buffer[1] = buffer[2];
-        buffer[2] = rxByte;
+        // Construction de la commande (jusqu'à '\n' ou '\r')
+        if (rxByte == '\n' || rxByte == '\r') {
+            if (cmd_idx > 0) {
+                cmd_buffer[cmd_idx] = '\0';
+                
+                // Parser on (LED)
+                if (strncmp(cmd_buffer, "on", 2) == 0) {
+                    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+                    send_uart(">> LED ON\r\n");
+                }
+                // Parser off (LED)
+                else if (strncmp(cmd_buffer, "off", 3) == 0) {
+                    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
+                    send_uart(">> LED OFF\r\n");
+                }
+                // Parser stop (arrêt d'urgence)
+                else if (strncmp(cmd_buffer, "stop", 4) == 0) {
+                    wheels[0].set_pwm(0);
+                    wheels[1].set_pwm(0);
+                    send_uart(">> MOTORS STOPPED\r\n");
+                }
+                // Parser M1:xxx (PWM -1000 à +1000)
+                else if (cmd_buffer[0] == 'M' && cmd_buffer[1] == '1' && cmd_buffer[2] == ':') {
+                    int val = 0;
+                    sscanf(&cmd_buffer[3], "%d", &val);
+                    if (val >= -1000 && val <= 1000) {
+                        wheels[0].set_pwm(val);
+                        sprintf(uart_msg, ">> Moteur 1 = %d\r\n", val);
+                        send_uart(uart_msg);
+                    }
+                }
+                // Parser M2:xxx (PWM -1000 à +1000)
+                else if (cmd_buffer[0] == 'M' && cmd_buffer[1] == '2' && cmd_buffer[2] == ':') {
+                    int val = 0;
+                    sscanf(&cmd_buffer[3], "%d", &val);
+                    if (val >= -1000 && val <= 1000) {
+                        wheels[1].set_pwm(val);
+                        sprintf(uart_msg, ">> Moteur 2 = %d\r\n", val);
+                        send_uart(uart_msg);
+                    }
+                }
+                
+                cmd_idx = 0;  // Reset buffer
+            }
+        }
+        else {
+            // Accumuler les caractères
+            if (cmd_idx < 19) {
+                cmd_buffer[cmd_idx++] = rxByte;
+            }
+        }
 
-        // Détection de "on" (fin de séquence 'o', 'n')
-        // On regarde les deux derniers caractères reçus
-        if (buffer[1] == 'o' && buffer[2] == 'n')
-        {
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
-            sendToOtherMCU("led allumée\r\n");
-        }
-        
-        // Détection de "off" (fin de séquence 'o', 'f', 'f')
-        // On regarde les trois derniers caractères reçus
-        else if (buffer[0] == 'o' && buffer[1] == 'f' && buffer[2] == 'f')
-        {
-            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
-            sendToOtherMCU("led éteinte\r\n");
-        }
-        
-        // Relance la réception pour le prochain caractère
+        // Relancer la réception
         HAL_UART_Receive_IT(&huart1, &rxByte, 1);
     }
 }
