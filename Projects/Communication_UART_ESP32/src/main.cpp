@@ -21,7 +21,7 @@ void setup() {
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
   
   Serial.println("Démarrage du test UART vers STM32...");
-  if (MODE_POSITION)
+  if (MODE_POSITION == true)
     Serial2.print("mode\n"); // Mode true : ASSERVISSEMENT POSITION, Mode false = VITESSE MOTEURS
 }
 
