@@ -4,15 +4,17 @@
 #include "gpio.h"
 #include "adc.h"
 #include "control/motor.hpp"
+#include "utils/printf.hpp"
 #include <cstring>
-#include <cstdio>
 #include <array>
 
 void SystemClock_Config(void);
 
+// Instance de SerialOut pour la communication UART
+SerialOut serial;
+
 // Variables globales
 uint8_t rxByte;
-char uart_msg[150];
 char cmd_buffer[20] = {0};
 uint8_t cmd_idx = 0;
 
@@ -26,10 +28,7 @@ std::array<Wheel, 3> wheels = {
     Wheel(3, 1200, 29.0f, 0.0f)      // Moteur 3 (réserve)
 };
 
-// Fonction simple pour envoyer un message UART
-void send_uart(const char* msg) {
-    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
-}
+
 
 int main(void)
 {
@@ -48,10 +47,10 @@ int main(void)
 
     // Calibration ADC - IMPORTANT: avant toute utilisation
     if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) != HAL_OK) {
-        send_uart("Erreur calibration ADC1\r\n");
+        serial.send("Erreur calibration ADC1\r\n");
     }
     if (HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED) != HAL_OK) {
-        send_uart("Erreur calibration ADC2\r\n");
+        serial.send("Erreur calibration ADC2\r\n");
     }
 
     // Initialisation des encodeurs au milieu (32768)
@@ -80,13 +79,13 @@ int main(void)
     HAL_UART_Receive_IT(&huart1, &rxByte, 1);
 
     // Message de démarrage
-    send_uart("\r\n=== TEST SIMPLE MOTEURS ===\r\n");
-    send_uart("Commandes:\r\n");
-    send_uart("  M1:xxx  -> Moteur 1 PWM 0-255\r\n");
-    send_uart("  M2:xxx  -> Moteur 2 PWM 0-255\r\n");
-    send_uart("  stop    -> Arrêt d'urgence\r\n");
-    send_uart("  on/off  -> LED\r\n");
-    send_uart("===========================\r\n\r\n");
+    serial.send("\r\n=== TEST SIMPLE MOTEURS ===\r\n");
+    serial.send("Commandes:\r\n");
+    serial.send("  M1:xxx  -> Moteur 1 PWM 0-255\r\n");
+    serial.send("  M2:xxx  -> Moteur 2 PWM 0-255\r\n");
+    serial.send("  stop    -> Arrêt d'urgence\r\n");
+    serial.send("  on/off  -> LED\r\n");
+    serial.send("===========================\r\n\r\n");
 
     while (1) {
         // Calcul de la vitesse toutes les 500ms
@@ -103,15 +102,13 @@ int main(void)
             float speed1 = wheels[0].get_speed();
             float speed2 = wheels[1].get_speed();
             
-            // Conversion rad/s -> ticks/s pour comparaison
+            // Conversion rad/s -> ticks/s
             int32_t speed1_ticks = (int32_t)(speed1 * 1200 / (2.0f * M_PI));
             int32_t speed2_ticks = (int32_t)(speed2 * 1200 / (2.0f * M_PI));
             
-            // Initialisation des valeurs ADC à 0
-            adc_values[0] = 0;
-            adc_values[1] = 0;
             
             // Lecture ADC1 (PB0 - Canal 15)
+            adc_values[0] = 0;
             if (HAL_ADC_Start(&hadc1) == HAL_OK) {
                 if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK) {
                     adc_values[0] = HAL_ADC_GetValue(&hadc1);
@@ -120,6 +117,7 @@ int main(void)
             }
             
             // Lecture ADC2 (PA5 - Canal 13)
+            adc_values[1] = 0;
             if (HAL_ADC_Start(&hadc2) == HAL_OK) {
                 if (HAL_ADC_PollForConversion(&hadc2, 100) == HAL_OK) {
                     adc_values[1] = HAL_ADC_GetValue(&hadc2);
@@ -131,11 +129,10 @@ int main(void)
             float voltage1 = (adc_values[0] * 3.3f) / 4095.0f;
             float voltage2 = (adc_values[1] * 3.3f) / 4095.0f;
             
-            // Affichage avec valeurs brutes pour debug
-            sprintf(uart_msg, "ENC1:%6ld | ENC2:%6ld | SPD1:%5ld | SPD2:%5ld ticks/s | ADC1:%4lu (%.2fV) | ADC2:%4lu (%.2fV)\r\n", 
-                    enc1, enc2, speed1_ticks, speed2_ticks, 
-                    adc_values[0], voltage1, adc_values[1], voltage2);
-            send_uart(uart_msg);
+            // Affichage avec printf formaté
+            serial.printf("ENC1:%6ld | ENC2:%6ld | SPD1:%5ld | SPD2:%5ld ticks/s | ADC1:%4lu (%.2fV) | ADC2:%4lu (%.2fV)\r\n",
+                         enc1, enc2, speed1_ticks, speed2_ticks,
+                         adc_values[0], voltage1, adc_values[1], voltage2);
             
             lastSend = HAL_GetTick();
         }
@@ -184,7 +181,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)
     {
-        // Construction de la commande (jusqu'à '\n' ou '\r')
         if (rxByte == '\n' || rxByte == '\r') {
             if (cmd_idx > 0) {
                 cmd_buffer[cmd_idx] = '\0';
@@ -192,18 +188,18 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 // Parser on (LED)
                 if (strncmp(cmd_buffer, "on", 2) == 0) {
                     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
-                    send_uart(">> LED ON\r\n");
+                    serial.send(">> LED ON\r\n");
                 }
                 // Parser off (LED)
                 else if (strncmp(cmd_buffer, "off", 3) == 0) {
                     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
-                    send_uart(">> LED OFF\r\n");
+                    serial.send(">> LED OFF\r\n");
                 }
                 // Parser stop (arrêt d'urgence)
                 else if (strncmp(cmd_buffer, "stop", 4) == 0) {
                     wheels[0].set_pwm(0);
                     wheels[1].set_pwm(0);
-                    send_uart(">> MOTORS STOPPED\r\n");
+                    serial.send(">> MOTORS STOPPED\r\n");
                 }
                 // Parser M1:xxx (PWM -1000 à +1000)
                 else if (cmd_buffer[0] == 'M' && cmd_buffer[1] == '1' && cmd_buffer[2] == ':') {
@@ -211,8 +207,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     sscanf(&cmd_buffer[3], "%d", &val);
                     if (val >= -1000 && val <= 1000) {
                         wheels[0].set_pwm(val);
-                        sprintf(uart_msg, ">> Moteur 1 = %d\r\n", val);
-                        send_uart(uart_msg);
+                        serial.printf(">> Moteur 1 = %d\r\n", val);
                     }
                 }
                 // Parser M2:xxx (PWM -1000 à +1000)
@@ -221,8 +216,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     sscanf(&cmd_buffer[3], "%d", &val);
                     if (val >= -1000 && val <= 1000) {
                         wheels[1].set_pwm(val);
-                        sprintf(uart_msg, ">> Moteur 2 = %d\r\n", val);
-                        send_uart(uart_msg);
+                        serial.printf(">> Moteur 2 = %d\r\n", val);
                     }
                 }
                 
@@ -230,13 +224,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
             }
         }
         else {
-            // Accumuler les caractères
             if (cmd_idx < 19) {
                 cmd_buffer[cmd_idx++] = rxByte;
             }
         }
 
-        // Relancer la réception
         HAL_UART_Receive_IT(&huart1, &rxByte, 1);
     }
 }

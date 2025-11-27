@@ -25,15 +25,22 @@ public:
         }
     }
     
-    void printf_decimal(double value, int8_t precision) {
-        char format[20];
-        snprintf(format, sizeof(format), "%%.%df\t", precision);
-        snprintf(buffer, sizeof(buffer), format, value);
-        HAL_UART_Transmit(uart, (uint8_t*)buffer, strlen(buffer), 100);
-    }
-    
     void send(const char* message) {
         HAL_UART_Transmit(uart, (uint8_t*)message, strlen(message), 100);
+    }
+    
+    void printf_decimal(double value, int precision) {
+        char fmt[16];
+        snprintf(fmt, sizeof(fmt), "%%.%df", precision);
+        printf(fmt, value);
+    }
+    
+    bool receive(uint8_t* data, uint16_t size, uint32_t timeout = 100) {
+        return HAL_UART_Receive(uart, data, size, timeout) == HAL_OK;
+    }
+    
+    bool receive_IT(uint8_t* data, uint16_t size) {
+        return HAL_UART_Receive_IT(uart, data, size) == HAL_OK;
     }
 };
 
