@@ -39,7 +39,7 @@ void loop() {
       //Serial.println("Envoi de la commande: on");
       Serial2.print("on\n");
       delay(10); // Petit délai pour s'assurer que les commandes sont séparées
-      Serial2.print("M1:0\n");
+      Serial2.print("M1:500\n");
       delay(10); // Petit délai pour s'assurer que les commandes sont séparées
       Serial2.print("M2:0\n");
     } else {
@@ -48,7 +48,7 @@ void loop() {
       delay(10); // Petit délai pour s'assurer que les commandes sont séparées
       Serial2.print("M1:0\n");
       delay(10); // Petit délai pour s'assurer que les commandes sont séparées
-      Serial2.print("M2:800\n");
+      Serial2.print("M2:500\n");
     }
     toggle = !toggle;
   }

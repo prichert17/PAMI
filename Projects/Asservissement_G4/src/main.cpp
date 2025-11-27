@@ -2,6 +2,7 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
+#include "adc.h"
 #include "control/motor.hpp"
 #include <cstring>
 #include <cstdio>
@@ -14,6 +15,9 @@ uint8_t rxByte;
 char uart_msg[150];
 char cmd_buffer[20] = {0};
 uint8_t cmd_idx = 0;
+
+// Variables ADC
+uint32_t adc_values[2];  // Buffer pour stocker les valeurs ADC
 
 // Moteurs utilisant la classe Wheel
 std::array<Wheel, 3> wheels = {
@@ -39,6 +43,16 @@ int main(void)
     MX_TIM3_Init();
     MX_TIM16_Init();
     MX_USART1_UART_Init();
+    MX_ADC1_Init();
+    MX_ADC2_Init();
+
+    // Calibration ADC - IMPORTANT: avant toute utilisation
+    if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) != HAL_OK) {
+        send_uart("Erreur calibration ADC1\r\n");
+    }
+    if (HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED) != HAL_OK) {
+        send_uart("Erreur calibration ADC2\r\n");
+    }
 
     // Initialisation des encodeurs au milieu (32768)
     TIM2->CNT = 32768;
@@ -80,21 +94,47 @@ int main(void)
         
         if (HAL_GetTick() - lastSend > 500) {
             // Mise à jour des vitesses
-            wheels[0].update_speed(0.5f);  // dt = 500ms = 0.5s
+            wheels[0].update_speed(0.5f);
             wheels[1].update_speed(0.5f);
             
             // Lecture des encodeurs et vitesses
             int32_t enc1 = wheels[0].get_encoder_count();
             int32_t enc2 = wheels[1].get_encoder_count();
-            float speed1 = wheels[0].get_speed();  // rad/s
+            float speed1 = wheels[0].get_speed();
             float speed2 = wheels[1].get_speed();
             
             // Conversion rad/s -> ticks/s pour comparaison
             int32_t speed1_ticks = (int32_t)(speed1 * 1200 / (2.0f * M_PI));
             int32_t speed2_ticks = (int32_t)(speed2 * 1200 / (2.0f * M_PI));
             
-            sprintf(uart_msg, "ENC1:%6ld | ENC2:%6ld | SPD1:%5ld | SPD2:%5ld ticks/s\r\n", 
-                    enc1, enc2, speed1_ticks, speed2_ticks);
+            // Initialisation des valeurs ADC à 0
+            adc_values[0] = 0;
+            adc_values[1] = 0;
+            
+            // Lecture ADC1 (PB0 - Canal 15)
+            if (HAL_ADC_Start(&hadc1) == HAL_OK) {
+                if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK) {
+                    adc_values[0] = HAL_ADC_GetValue(&hadc1);
+                }
+                HAL_ADC_Stop(&hadc1);
+            }
+            
+            // Lecture ADC2 (PA5 - Canal 13)
+            if (HAL_ADC_Start(&hadc2) == HAL_OK) {
+                if (HAL_ADC_PollForConversion(&hadc2, 100) == HAL_OK) {
+                    adc_values[1] = HAL_ADC_GetValue(&hadc2);
+                }
+                HAL_ADC_Stop(&hadc2);
+            }
+            
+            // Conversion en tension (3.3V de référence, résolution 12 bits = 4095)
+            float voltage1 = (adc_values[0] * 3.3f) / 4095.0f;
+            float voltage2 = (adc_values[1] * 3.3f) / 4095.0f;
+            
+            // Affichage avec valeurs brutes pour debug
+            sprintf(uart_msg, "ENC1:%6ld | ENC2:%6ld | SPD1:%5ld | SPD2:%5ld ticks/s | ADC1:%4lu (%.2fV) | ADC2:%4lu (%.2fV)\r\n", 
+                    enc1, enc2, speed1_ticks, speed2_ticks, 
+                    adc_values[0], voltage1, adc_values[1], voltage2);
             send_uart(uart_msg);
             
             lastSend = HAL_GetTick();
