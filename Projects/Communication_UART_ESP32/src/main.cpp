@@ -37,10 +37,18 @@ void loop() {
     
     if (!toggle) {
       //Serial.println("Envoi de la commande: on");
-      Serial2.print("on");
+      Serial2.print("on\n");
+      delay(10); // Petit délai pour s'assurer que les commandes sont séparées
+      Serial2.print("M1:0\n");
+      delay(10); // Petit délai pour s'assurer que les commandes sont séparées
+      Serial2.print("M2:0\n");
     } else {
       //Serial.println("Envoi de la commande: off");
-      Serial2.print("off");
+      Serial2.print("off\n");
+      delay(10); // Petit délai pour s'assurer que les commandes sont séparées
+      Serial2.print("M1:0\n");
+      delay(10); // Petit délai pour s'assurer que les commandes sont séparées
+      Serial2.print("M2:800\n");
     }
     toggle = !toggle;
   }
