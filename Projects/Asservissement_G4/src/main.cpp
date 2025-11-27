@@ -4,6 +4,8 @@
 #include "gpio.h"
 #include "adc.h"
 #include "control/motor.hpp"
+#include "control/odometry.hpp"
+#include "control/asservissement.hpp"
 #include "utils/printf.hpp"
 #include <cstring>
 #include <array>
@@ -32,7 +34,16 @@ std::array<Wheel, 3> wheels = {
     Wheel(3, 1200, 29.0f, 0.0f)      // Moteur 3 (réserve)
 };
 
-// Compteur pour l'affichage périodique en mode test
+// Odométrie et asservissement
+Odometry odometry(wheels);
+Asserv_Position asserv(&odometry, &wheels);
+
+// Variables pour la position cible
+float target_x = 0.0f;
+float target_y = 0.0f;
+float target_z = 0.0f;  // Rotation en degrés
+
+// Compteur pour l'affichage périodique
 static uint32_t lastSend = 0;
 
 int main(void)
@@ -45,7 +56,10 @@ int main(void)
     MX_TIM1_Init();
     MX_TIM2_Init();
     MX_TIM3_Init();
+    MX_TIM6_Init();
+    MX_TIM15_Init();
     MX_TIM16_Init();
+    MX_TIM17_Init();
     MX_USART1_UART_Init();
     MX_ADC1_Init();
     MX_ADC2_Init();
@@ -59,8 +73,8 @@ int main(void)
     }
 
     // Initialisation des encodeurs au milieu (32768)
-    TIM2->CNT = 32768;
-    TIM3->CNT = 32768;
+    TIM2->CNT = (1<<15);
+    TIM3->CNT = (1<<15);
 
     // Démarrage des encodeurs
     HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
@@ -91,14 +105,23 @@ int main(void)
     HAL_TIM_Base_Start_IT(&htim15);
     HAL_TIM_Base_Start_IT(&htim17);
 
+    // Configuration PID pour l'asservissement en position
+    asserv.set_PID(1.0, 1.0, 0.0);
+
     // Message de démarrage
-    serial.send("\r\n=== TEST SIMPLE MOTEURS ===\r\n");
+    serial.send("\r\n=== CONTROLE ROBOT ===\r\n");
     serial.send("Commandes:\r\n");
+    serial.send("  mode    -> Basculer test/asservi\r\n");
+    serial.send("Mode TEST:\r\n");
     serial.send("  M1:xxx  -> Moteur 1 PWM -1000 à +1000\r\n");
     serial.send("  M2:xxx  -> Moteur 2 PWM -1000 à +1000\r\n");
+    serial.send("Mode ASSERVI:\r\n");
+    serial.send("  X:xxx   -> Position X cible (mm)\r\n");
+    serial.send("  Y:xxx   -> Position Y cible (mm)\r\n");
+    serial.send("  Z:xxx   -> Rotation cible (degrés)\r\n");
+    serial.send("Autres:\r\n");
     serial.send("  stop    -> Arrêt d'urgence\r\n");
     serial.send("  on/off  -> LED\r\n");
-    serial.send("  mode    -> Basculer entre test/asservi\r\n");
     serial.send("===========================\r\n\r\n");
 
     while (1) {
@@ -145,6 +168,11 @@ int main(void)
                 serial.printf("[TEST] ");
             } else {
                 serial.printf("[ASSERV] ");
+                // Affichage position actuelle vs cible
+                Vector2DAndRotation pos = odometry.get_position();
+                serial.printf("Pos(%.1f,%.1f,%.1f°) -> Cible(%.1f,%.1f,%.1f°) | ",
+                    pos.x_y.x, pos.x_y.y, pos.teta * 180.0f / M_PI,
+                    target_x, target_y, target_z);
             }
             
             serial.printf("ENC1:%6ld | ENC2:%6ld | SPD1:%5ld | SPD2:%5ld ticks/s | ADC1:%4lu (%.2fV) | ADC2:%4lu (%.2fV)\r\n",
@@ -205,16 +233,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     if(htim->Instance == htim17.Instance){
         if (!test_mode) {
             // Mise à jour de l'asservissement en mode asservi
-            // asserv.update_asserv();
+            asserv.update_asserv();
         }
     }
 
     /* Odométrie [500Hz] */
     if(htim->Instance == htim6.Instance){
-        if (!test_mode) {
-            // Mise à jour de l'odométrie en mode asservi
-            // odometry.update_odometry();
-        }
+        // Mise à jour de l'odométrie dans tous les cas (pour lecture encodeurs)
+        odometry.update_odometry();
     }
 }
 
@@ -241,6 +267,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 else if (strncmp(cmd_buffer, "stop", 4) == 0) {
                     wheels[0].set_pwm(0);
                     wheels[1].set_pwm(0);
+                    asserv.stop_asserv();
                     serial.send(">> MOTORS STOPPED\r\n");
                 }
                 // Parser mode (basculer entre test et asservi)
@@ -248,11 +275,19 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     test_mode = !test_mode;
                     if (test_mode) {
                         serial.send(">> MODE TEST ACTIF\r\n");
-                        // Arrêter les moteurs lors du passage en mode test
+                        // Arrêter l'asservissement et les moteurs
+                        asserv.stop_asserv();
                         wheels[0].set_pwm(0);
                         wheels[1].set_pwm(0);
                     } else {
                         serial.send(">> MODE ASSERVI ACTIF\r\n");
+                        // Démarrer l'asservissement avec position actuelle comme cible
+                        Vector2DAndRotation current_pos = odometry.get_position();
+                        target_x = current_pos.x_y.x;
+                        target_y = current_pos.x_y.y;
+                        target_z = current_pos.teta * 180.0f / M_PI;
+                        asserv.set_target_position(Vector2DAndRotation(target_x, target_y, current_pos.teta));
+                        asserv.start_asserv();
                     }
                 }
                 // Parser M1:xxx (PWM -1000 à +1000) - uniquement en mode test
@@ -279,6 +314,42 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         }
                     } else {
                         serial.send(">> Commande moteur désactivée en mode asservi\r\n");
+                    }
+                }
+                // Parser X:xxx (Position X en mm) - uniquement en mode asservi
+                else if (cmd_buffer[0] == 'X' && cmd_buffer[1] == ':') {
+                    if (!test_mode) {
+                        float val = 0.0f;
+                        sscanf(&cmd_buffer[2], "%f", &val);
+                        target_x = val;
+                        asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
+                        serial.printf(">> Cible X = %.1f mm\r\n", target_x);
+                    } else {
+                        serial.send(">> Commande position désactivée en mode test\r\n");
+                    }
+                }
+                // Parser Y:xxx (Position Y en mm) - uniquement en mode asservi
+                else if (cmd_buffer[0] == 'Y' && cmd_buffer[1] == ':') {
+                    if (!test_mode) {
+                        float val = 0.0f;
+                        sscanf(&cmd_buffer[2], "%f", &val);
+                        target_y = val;
+                        asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
+                        serial.printf(">> Cible Y = %.1f mm\r\n", target_y);
+                    } else {
+                        serial.send(">> Commande position désactivée en mode test\r\n");
+                    }
+                }
+                // Parser Z:xxx (Rotation en degrés) - uniquement en mode asservi
+                else if (cmd_buffer[0] == 'Z' && cmd_buffer[1] == ':') {
+                    if (!test_mode) {
+                        float val = 0.0f;
+                        sscanf(&cmd_buffer[2], "%f", &val);
+                        target_z = val;
+                        asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
+                        serial.printf(">> Cible Z = %.1f°\r\n", target_z);
+                    } else {
+                        serial.send(">> Commande position désactivée en mode test\r\n");
                     }
                 }
                 
