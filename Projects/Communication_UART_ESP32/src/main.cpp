@@ -6,6 +6,11 @@
 #define RXD2 16
 #define TXD2 17
 
+// *** MODE DE FONCTIONNEMENT ***
+// true = Mode asservissement en position (X, Y, Z, rotation)
+// false = Mode vitesse moteurs (M1, M2)
+bool MODE_POSITION = false;
+
 void setup() {
   // Serial pour le debug sur l'ordinateur
   Serial.begin(115200);
@@ -16,6 +21,7 @@ void setup() {
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
   
   Serial.println("Démarrage du test UART vers STM32...");
+  Serial.println(MODE_POSITION ? "Mode: ASSERVISSEMENT POSITION" : "Mode: VITESSE MOTEURS");
 }
 
 void loop() {
@@ -35,20 +41,41 @@ void loop() {
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
     
-    if (!toggle) {
-      //Serial.println("Envoi de la commande: on");
-      Serial2.print("on\n");
-      delay(10); // Petit délai pour s'assurer que les commandes sont séparées
-      Serial2.print("M1:500\n");
-      delay(10); // Petit délai pour s'assurer que les commandes sont séparées
-      Serial2.print("M2:0\n");
+    if (MODE_POSITION) {
+      // *** MODE ASSERVISSEMENT EN POSITION ***
+      if (!toggle) {
+        Serial2.print("on\n");
+        delay(10);
+        Serial2.print("X:100\n");
+        delay(10);
+        Serial2.print("Y:200\n");
+        delay(10);
+        Serial2.print("Z:45\n"); // Rotation en degrés
+
+      } else {
+        Serial2.print("off\n");
+        delay(10);
+        Serial2.print("X:300\n");
+        delay(10);
+        Serial2.print("Y:150\n");
+        delay(10);
+        Serial2.print("Z:270\n"); // Rotation en degrés
+      }
     } else {
-      //Serial.println("Envoi de la commande: off");
-      Serial2.print("off\n");
-      delay(10); // Petit délai pour s'assurer que les commandes sont séparées
-      Serial2.print("M1:0\n");
-      delay(10); // Petit délai pour s'assurer que les commandes sont séparées
-      Serial2.print("M2:500\n");
+      // *** MODE VITESSE MOTEURS ***
+      if (!toggle) {
+        Serial2.print("on\n");
+        delay(10);
+        Serial2.print("M1:500\n");
+        delay(10);
+        Serial2.print("M2:0\n");
+      } else {
+        Serial2.print("off\n");
+        delay(10);
+        Serial2.print("M1:0\n");
+        delay(10);
+        Serial2.print("M2:500\n");
+      }
     }
     toggle = !toggle;
   }
