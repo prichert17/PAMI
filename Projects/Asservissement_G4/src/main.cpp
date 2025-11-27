@@ -9,6 +9,7 @@
 #include <array>
 
 void SystemClock_Config(void);
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 
 // Instance de SerialOut pour la communication UART
 SerialOut serial;
@@ -21,6 +22,9 @@ uint8_t cmd_idx = 0;
 // Variables ADC
 uint32_t adc_values[2];  // Buffer pour stocker les valeurs ADC
 
+// Mode de fonctionnement : true = test manuel, false = asservi
+bool test_mode = true;
+
 // Moteurs utilisant la classe Wheel
 std::array<Wheel, 3> wheels = {
     Wheel(1, 1200, 29.0f, 0.0f),     // Moteur 1
@@ -28,7 +32,8 @@ std::array<Wheel, 3> wheels = {
     Wheel(3, 1200, 29.0f, 0.0f)      // Moteur 3 (réserve)
 };
 
-
+// Compteur pour l'affichage périodique en mode test
+static uint32_t lastSend = 0;
 
 int main(void)
 {
@@ -78,19 +83,26 @@ int main(void)
     // Démarrage réception UART
     HAL_UART_Receive_IT(&huart1, &rxByte, 1);
 
+    // Démarrage des timers pour interruptions
+    // TIM6 : Odométrie 500Hz
+    // TIM15 : Timer générique 1Hz
+    // TIM17 : Asservissement 100Hz
+    HAL_TIM_Base_Start_IT(&htim6);
+    HAL_TIM_Base_Start_IT(&htim15);
+    HAL_TIM_Base_Start_IT(&htim17);
+
     // Message de démarrage
     serial.send("\r\n=== TEST SIMPLE MOTEURS ===\r\n");
     serial.send("Commandes:\r\n");
-    serial.send("  M1:xxx  -> Moteur 1 PWM 0-255\r\n");
-    serial.send("  M2:xxx  -> Moteur 2 PWM 0-255\r\n");
+    serial.send("  M1:xxx  -> Moteur 1 PWM -1000 à +1000\r\n");
+    serial.send("  M2:xxx  -> Moteur 2 PWM -1000 à +1000\r\n");
     serial.send("  stop    -> Arrêt d'urgence\r\n");
     serial.send("  on/off  -> LED\r\n");
+    serial.send("  mode    -> Basculer entre test/asservi\r\n");
     serial.send("===========================\r\n\r\n");
 
     while (1) {
-        // Calcul de la vitesse toutes les 500ms
-        static uint32_t lastSend = 0;
-        
+        // Affichage toutes les 500ms (dans les deux modes)
         if (HAL_GetTick() - lastSend > 500) {
             // Mise à jour des vitesses
             wheels[0].update_speed(0.5f);
@@ -105,7 +117,6 @@ int main(void)
             // Conversion rad/s -> ticks/s
             int32_t speed1_ticks = (int32_t)(speed1 * 1200 / (2.0f * M_PI));
             int32_t speed2_ticks = (int32_t)(speed2 * 1200 / (2.0f * M_PI));
-            
             
             // Lecture ADC1 (PB0 - Canal 15)
             adc_values[0] = 0;
@@ -129,7 +140,13 @@ int main(void)
             float voltage1 = (adc_values[0] * 3.3f) / 4095.0f;
             float voltage2 = (adc_values[1] * 3.3f) / 4095.0f;
             
-            // Affichage avec printf formaté
+            // Affichage avec indication du mode
+            if (test_mode) {
+                serial.printf("[TEST] ");
+            } else {
+                serial.printf("[ASSERV] ");
+            }
+            
             serial.printf("ENC1:%6ld | ENC2:%6ld | SPD1:%5ld | SPD2:%5ld ticks/s | ADC1:%4lu (%.2fV) | ADC2:%4lu (%.2fV)\r\n",
                          enc1, enc2, speed1_ticks, speed2_ticks,
                          adc_values[0], voltage1, adc_values[1], voltage2);
@@ -176,6 +193,31 @@ void SystemClock_Config(void)
     }
 }
 
+/* Callback des interruptions timer */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    // Timer générique [1Hz]
+    if(htim->Instance == htim15.Instance){
+        // Peut servir pour des tâches périodiques lentes
+    }
+
+    /* Asservissement [100Hz] */
+    if(htim->Instance == htim17.Instance){
+        if (!test_mode) {
+            // Mise à jour de l'asservissement en mode asservi
+            // asserv.update_asserv();
+        }
+    }
+
+    /* Odométrie [500Hz] */
+    if(htim->Instance == htim6.Instance){
+        if (!test_mode) {
+            // Mise à jour de l'odométrie en mode asservi
+            // odometry.update_odometry();
+        }
+    }
+}
+
 // Callback de réception UART
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
@@ -201,22 +243,42 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     wheels[1].set_pwm(0);
                     serial.send(">> MOTORS STOPPED\r\n");
                 }
-                // Parser M1:xxx (PWM -1000 à +1000)
-                else if (cmd_buffer[0] == 'M' && cmd_buffer[1] == '1' && cmd_buffer[2] == ':') {
-                    int val = 0;
-                    sscanf(&cmd_buffer[3], "%d", &val);
-                    if (val >= -1000 && val <= 1000) {
-                        wheels[0].set_pwm(val);
-                        serial.printf(">> Moteur 1 = %d\r\n", val);
+                // Parser mode (basculer entre test et asservi)
+                else if (strncmp(cmd_buffer, "mode", 4) == 0) {
+                    test_mode = !test_mode;
+                    if (test_mode) {
+                        serial.send(">> MODE TEST ACTIF\r\n");
+                        // Arrêter les moteurs lors du passage en mode test
+                        wheels[0].set_pwm(0);
+                        wheels[1].set_pwm(0);
+                    } else {
+                        serial.send(">> MODE ASSERVI ACTIF\r\n");
                     }
                 }
-                // Parser M2:xxx (PWM -1000 à +1000)
+                // Parser M1:xxx (PWM -1000 à +1000) - uniquement en mode test
+                else if (cmd_buffer[0] == 'M' && cmd_buffer[1] == '1' && cmd_buffer[2] == ':') {
+                    if (test_mode) {
+                        int val = 0;
+                        sscanf(&cmd_buffer[3], "%d", &val);
+                        if (val >= -1000 && val <= 1000) {
+                            wheels[0].set_pwm(val);
+                            serial.printf(">> Moteur 1 = %d\r\n", val);
+                        }
+                    } else {
+                        serial.send(">> Commande moteur désactivée en mode asservi\r\n");
+                    }
+                }
+                // Parser M2:xxx (PWM -1000 à +1000) - uniquement en mode test
                 else if (cmd_buffer[0] == 'M' && cmd_buffer[1] == '2' && cmd_buffer[2] == ':') {
-                    int val = 0;
-                    sscanf(&cmd_buffer[3], "%d", &val);
-                    if (val >= -1000 && val <= 1000) {
-                        wheels[1].set_pwm(val);
-                        serial.printf(">> Moteur 2 = %d\r\n", val);
+                    if (test_mode) {
+                        int val = 0;
+                        sscanf(&cmd_buffer[3], "%d", &val);
+                        if (val >= -1000 && val <= 1000) {
+                            wheels[1].set_pwm(val);
+                            serial.printf(">> Moteur 2 = %d\r\n", val);
+                        }
+                    } else {
+                        serial.send(">> Commande moteur désactivée en mode asservi\r\n");
                     }
                 }
                 
