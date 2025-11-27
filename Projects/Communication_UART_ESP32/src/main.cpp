@@ -9,7 +9,7 @@
 // *** MODE DE FONCTIONNEMENT ***
 // true = Mode asservissement en position (X, Y, Z, rotation)
 // false = Mode vitesse moteurs (M1, M2)
-bool MODE_POSITION = false;
+bool MODE_POSITION = true;
 
 void setup() {
   // Serial pour le debug sur l'ordinateur
@@ -21,7 +21,8 @@ void setup() {
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
   
   Serial.println("Démarrage du test UART vers STM32...");
-  Serial.println(MODE_POSITION ? "Mode: ASSERVISSEMENT POSITION" : "Mode: VITESSE MOTEURS");
+  if (MODE_POSITION)
+    Serial2.print("mode\n"); // Mode true : ASSERVISSEMENT POSITION, Mode false = VITESSE MOTEURS
 }
 
 void loop() {
