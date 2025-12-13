@@ -62,10 +62,6 @@
         [
           "lib_footprint_mismatch|161100000|26322500|a2d6acb9-906a-4463-90e8-bb6d873b4296|00000000-0000-0000-0000-000000000000",
           "Ok car j'ai agrandi de 0.2mm à 0.3mm les trous du GND"
-        ],
-        [
-          "lib_footprint_mismatch|56460000|70700000|bb5a0795-9095-432a-a4c5-04cf145592c5|00000000-0000-0000-0000-000000000000",
-          "passage des GND A1/B12/A12/B1 en solide au lieu de frain thermique"
         ]
       ],
       "meta": {
