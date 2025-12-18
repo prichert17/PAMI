@@ -58,12 +58,7 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [
-        [
-          "lib_footprint_mismatch|161100000|26322500|a2d6acb9-906a-4463-90e8-bb6d873b4296|00000000-0000-0000-0000-000000000000",
-          "Ok car j'ai agrandi de 0.2mm à 0.3mm les trous du GND"
-        ]
-      ],
+      "drc_exclusions": [],
       "meta": {
         "version": 2
       },
@@ -513,7 +508,7 @@
       "plot": "",
       "pos_files": "",
       "specctra_dsn": "",
-      "step": "",
+      "step": "PCB_PAMI_2025-2026.step",
       "svg": "",
       "vrml": ""
     },
