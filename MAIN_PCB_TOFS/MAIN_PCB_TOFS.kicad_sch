@@ -3524,7 +3524,7 @@
 				)
 			)
 		)
-		(property "Footprint" "composant_pami:esp32_wroom32"
+		(property "Footprint" "Library:PinHeader_2x15_P2.54mm_Vertical_esp32"
 			(at 85.09 44.45 0)
 			(effects
 				(font
