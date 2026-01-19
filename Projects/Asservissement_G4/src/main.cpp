@@ -22,7 +22,53 @@ char cmd_buffer[20] = {0};
 uint8_t cmd_idx = 0;
 
 // Variables ADC
-uint32_t adc_values[2];  // Buffer pour stocker les valeurs ADC
+uint32_t adc_values;  // variable pour stocker les valeurs ADC
+
+// Seuils de tension pour LEDs batterie (après pont diviseur /2)
+// LiFePO4 1S: pleine charge ~3.6V -> 1.8V, déchargée ~2.5V -> 1.25V
+// USB 5V -> 2.5V
+#define BATTERY_FULL_THRESHOLD     1.6f   // Tension seuil batterie bien chargée (V après diviseur) = 3.2V réel
+#define BATTERY_LOW_THRESHOLD      1.45f  // Tension seuil batterie faible (V après diviseur) = 2.9V réel
+#define BATTERY_CRITICAL_THRESHOLD 1.35f  // Tension critique (V après diviseur) = 2.7V réel
+#define USB_VOLTAGE_MAX            2.55f  // Tension USB max (5V / 2 = 2.5V)
+#define USB_VOLTAGE_MIN            2.4f   // Tension USB min
+
+// Fonction pour mettre à jour les LEDs de batterie
+void update_battery_leds(float voltage) {
+    static uint32_t blink_timer = 0;
+    static bool blink_state = false;
+    
+    // Si tension USB (~2.5V après diviseur) -> les deux LEDs allumées
+    if (voltage >= USB_VOLTAGE_MIN && voltage <= USB_VOLTAGE_MAX) {
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);  // LED verte OFF
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);  // LED rouge OFF
+    }
+    // Batterie dangereusement basse -> LED rouge clignotante
+    else if (voltage < BATTERY_CRITICAL_THRESHOLD) {
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET); // LED verte OFF
+        // Clignotement toutes les 250ms
+        if (HAL_GetTick() - blink_timer >= 250) {
+            blink_state = !blink_state;
+            blink_timer = HAL_GetTick();
+        }
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, blink_state ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    }
+    // Batterie faible (entre critical et low) -> LED rouge seule
+    else if (voltage < BATTERY_LOW_THRESHOLD) {
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET); // LED verte OFF
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);   // LED rouge ON
+    }
+    // Batterie moyenne (entre low et full) -> les deux LEDs
+    else if (voltage < BATTERY_FULL_THRESHOLD) {
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);  // LED verte ON
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);  // LED rouge ON
+    }
+    // Batterie bien chargée -> LED verte seule
+    else {
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);  // LED verte ON
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET); // LED rouge OFF
+    }
+}
 
 // Mode de fonctionnement : true = test manuel, false = asservi
 bool test_mode = true;
@@ -142,26 +188,19 @@ int main(void)
             int32_t speed2_ticks = (int32_t)(speed2 * 1200 / (2.0f * M_PI));
             
             // Lecture ADC1 (PB0 - Canal 15)
-            adc_values[0] = 0;
+            adc_values = 0;
             if (HAL_ADC_Start(&hadc1) == HAL_OK) {
                 if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK) {
-                    adc_values[0] = HAL_ADC_GetValue(&hadc1);
+                    adc_values = HAL_ADC_GetValue(&hadc1);
                 }
                 HAL_ADC_Stop(&hadc1);
             }
             
-            // Lecture ADC2 (PA5 - Canal 13)
-            adc_values[1] = 0;
-            if (HAL_ADC_Start(&hadc2) == HAL_OK) {
-                if (HAL_ADC_PollForConversion(&hadc2, 100) == HAL_OK) {
-                    adc_values[1] = HAL_ADC_GetValue(&hadc2);
-                }
-                HAL_ADC_Stop(&hadc2);
-            }
-            
             // Conversion en tension (3.3V de référence, résolution 12 bits = 4095)
-            float voltage1 = (adc_values[0] * 3.3f) / 4095.0f;
-            float voltage2 = (adc_values[1] * 3.3f) / 4095.0f;
+            float voltage1 = (adc_values * 3.3f) / 4095.0f;
+            
+            // Mise à jour des LEDs de batterie
+            update_battery_leds(voltage1);
             
             // Affichage avec indication du mode
             if (test_mode) {
@@ -175,9 +214,9 @@ int main(void)
                     target_x, target_y, target_z);
             }
             
-            serial.printf("ENC1:%6ld | ENC2:%6ld | SPD1:%5ld | SPD2:%5ld ticks/s | ADC1:%4lu (%.2fV) | ADC2:%4lu (%.2fV)\r\n",
+            serial.printf("ENC1:%6ld | ENC2:%6ld | SPD1:%5ld | SPD2:%5ld ticks/s | ADC1:%4lu (%.2fV)\r\n",
                          enc1, enc2, speed1_ticks, speed2_ticks,
-                         adc_values[0], voltage1, adc_values[1], voltage2);
+                         adc_values, voltage1);
             
             lastSend = HAL_GetTick();
         }
