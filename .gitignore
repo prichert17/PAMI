@@ -1,0 +1,42 @@
+# --- Fichiers système KiCad ---
+*.lck
+
+# Cache de la bibliothèque d'empreintes (change tout le temps, binaire lourd)
+fp-info-cache
+
+# --- Fichiers de Sauvegarde et Temporaires ---
+# Sauvegardes automatiques générées par KiCad
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*-bak
+*.bak
+_autosave-*
+
+# --- Fichiers de Configuration Locale ---
+# Préférences locales du projet (zoom, position fenêtres, calques visibles...)
+# Utile d'ignorer pour éviter les conflits entre développeurs ou machines.
+*.kicad_prl
+
+# --- Rapports et Logs ---
+*.rpt
+*.erc
+*.drc
+*.log
+*.xml
+*.csv
+
+# --- Fichiers de Fabrication (Optionnel) ---
+*.gbr
+*.drl
+*.pos
+*.job
+*.ger
+*.step
+*.stp
+*.pdf
+*.svg
+*.dxf
+
+# --- Dossiers temporaires ---
+/gerbers/
+/fabrication/
