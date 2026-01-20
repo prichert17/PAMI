@@ -155,20 +155,12 @@ int main(void)
     asserv.set_PID(1.0, 1.0, 0.0);
 
     // Message de démarrage
-    serial.send("\r\n=== CONTROLE ROBOT ===\r\n");
-    serial.send("Commandes:\r\n");
-    serial.send("  mode    -> Basculer test/asservi\r\n");
-    serial.send("Mode TEST:\r\n");
-    serial.send("  M1:xxx  -> Moteur 1 PWM -1000 à +1000\r\n");
-    serial.send("  M2:xxx  -> Moteur 2 PWM -1000 à +1000\r\n");
-    serial.send("Mode ASSERVI:\r\n");
-    serial.send("  X:xxx   -> Position X cible (mm)\r\n");
-    serial.send("  Y:xxx   -> Position Y cible (mm)\r\n");
-    serial.send("  Z:xxx   -> Rotation cible (degrés)\r\n");
-    serial.send("Autres:\r\n");
-    serial.send("  stop    -> Arrêt d'urgence\r\n");
-    serial.send("  on/off  -> LED\r\n");
-    serial.send("===========================\r\n\r\n");
+    serial.send("\r\n=== PAMI STM32 ===\r\n");
+    serial.send("mode auto   -> Mode automatique\r\n");
+    serial.send("mode manuel -> Mode manuel\r\n");
+    serial.send("AUTO: X:xxx Y:xxx (mm)\r\n");
+    serial.send("MANUEL: M1:xxx M2:xxx (-1000/+1000), on, off, stop\r\n");
+    serial.send("==================\r\n\r\n");
 
     while (1) {
         // Affichage toutes les 500ms (dans les deux modes)
@@ -202,21 +194,18 @@ int main(void)
             // Mise à jour des LEDs de batterie
             update_battery_leds(voltage1);
             
-            // Affichage avec indication du mode
-            if (test_mode) {
-                serial.printf("[TEST] ");
-            } else {
-                serial.printf("[ASSERV] ");
-                // Affichage position actuelle vs cible
-                Vector2DAndRotation pos = odometry.get_position();
-                serial.printf("Pos(%.1f,%.1f,%.1f°) -> Cible(%.1f,%.1f,%.1f°) | ",
-                    pos.x_y.x, pos.x_y.y, pos.teta * 180.0f / M_PI,
-                    target_x, target_y, target_z);
-            }
+            // Tension réelle (x2 pour compenser pont diviseur)
+            float voltage_real = voltage1 * 2.0f;
             
-            serial.printf("ENC1:%6ld | ENC2:%6ld | SPD1:%5ld | SPD2:%5ld ticks/s | ADC1:%4lu (%.2fV)\r\n",
+            // Position actuelle
+            Vector2DAndRotation pos = odometry.get_position();
+            float pos_z_deg = pos.teta * 180.0f / M_PI;
+            
+            // Affichage unifié
+            serial.printf("[%s] ENC:%ld,%ld SPD:%ld,%ld V:%.2f X:%.1f Y:%.1f Z:%.1f\r\n",
+                         test_mode ? "MANUEL" : "AUTO",
                          enc1, enc2, speed1_ticks, speed2_ticks,
-                         adc_values, voltage1);
+                         voltage_real, pos.x_y.x, pos.x_y.y, pos_z_deg);
             
             lastSend = HAL_GetTick();
         }
@@ -309,86 +298,85 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     asserv.stop_asserv();
                     serial.send(">> MOTORS STOPPED\r\n");
                 }
-                // Parser mode (basculer entre test et asservi)
-                else if (strncmp(cmd_buffer, "mode", 4) == 0) {
-                    test_mode = !test_mode;
-                    if (test_mode) {
-                        serial.send(">> MODE TEST ACTIF\r\n");
-                        // Arrêter l'asservissement et les moteurs
-                        asserv.stop_asserv();
-                        wheels[0].set_pwm(0);
-                        wheels[1].set_pwm(0);
-                    } else {
-                        serial.send(">> MODE ASSERVI ACTIF\r\n");
-                        // Démarrer l'asservissement avec position actuelle comme cible
-                        Vector2DAndRotation current_pos = odometry.get_position();
-                        target_x = current_pos.x_y.x;
-                        target_y = current_pos.x_y.y;
-                        target_z = current_pos.teta * 180.0f / M_PI;
-                        asserv.set_target_position(Vector2DAndRotation(target_x, target_y, current_pos.teta));
-                        asserv.start_asserv();
-                    }
+                // Parser mode manuel
+                else if (strncmp(cmd_buffer, "mode manuel", 11) == 0) {
+                    test_mode = true;
+                    serial.send(">> MANUEL\r\n");
+                    asserv.stop_asserv();
+                    wheels[0].set_pwm(0);
+                    wheels[1].set_pwm(0);
                 }
-                // Parser M1:xxx (PWM -1000 à +1000) - uniquement en mode test
+                // Parser mode auto
+                else if (strncmp(cmd_buffer, "mode auto", 9) == 0) {
+                    test_mode = false;
+                    serial.send(">> AUTO\r\n");
+                    Vector2DAndRotation current_pos = odometry.get_position();
+                    target_x = current_pos.x_y.x;
+                    target_y = current_pos.x_y.y;
+                    target_z = current_pos.teta * 180.0f / M_PI;
+                    asserv.set_target_position(Vector2DAndRotation(target_x, target_y, current_pos.teta));
+                    asserv.start_asserv();
+                }
+                // Parser M1:xxx (PWM -1000 à +1000) - uniquement en mode manuel
                 else if (cmd_buffer[0] == 'M' && cmd_buffer[1] == '1' && cmd_buffer[2] == ':') {
                     if (test_mode) {
                         int val = 0;
                         sscanf(&cmd_buffer[3], "%d", &val);
                         if (val >= -1000 && val <= 1000) {
                             wheels[0].set_pwm(val);
-                            serial.printf(">> Moteur 1 = %d\r\n", val);
+                            serial.printf(">> M1=%d\r\n", val);
                         }
                     } else {
-                        serial.send(">> Commande moteur désactivée en mode asservi\r\n");
+                        serial.send(">> Err: mode AUTO\r\n");
                     }
                 }
-                // Parser M2:xxx (PWM -1000 à +1000) - uniquement en mode test
+                // Parser M2:xxx (PWM -1000 à +1000) - uniquement en mode manuel
                 else if (cmd_buffer[0] == 'M' && cmd_buffer[1] == '2' && cmd_buffer[2] == ':') {
                     if (test_mode) {
                         int val = 0;
                         sscanf(&cmd_buffer[3], "%d", &val);
                         if (val >= -1000 && val <= 1000) {
                             wheels[1].set_pwm(val);
-                            serial.printf(">> Moteur 2 = %d\r\n", val);
+                            serial.printf(">> M2=%d\r\n", val);
                         }
                     } else {
-                        serial.send(">> Commande moteur désactivée en mode asservi\r\n");
+                        serial.send(">> Err: mode AUTO\r\n");
                     }
                 }
-                // Parser X:xxx (Position X en mm) - uniquement en mode asservi
+                // Parser X:xxx (Position X en mm) - uniquement en mode auto
                 else if (cmd_buffer[0] == 'X' && cmd_buffer[1] == ':') {
                     if (!test_mode) {
                         float val = 0.0f;
                         sscanf(&cmd_buffer[2], "%f", &val);
                         target_x = val;
                         asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
-                        serial.printf(">> Cible X = %.1f mm\r\n", target_x);
+                        serial.printf(">> X=%.1f\r\n", target_x);
                     } else {
-                        serial.send(">> Commande position désactivée en mode test\r\n");
+                        serial.send(">> Err: mode MANUEL\r\n");
                     }
                 }
-                // Parser Y:xxx (Position Y en mm) - uniquement en mode asservi
+                // Parser Y:xxx (Position Y en mm) - uniquement en mode auto
                 else if (cmd_buffer[0] == 'Y' && cmd_buffer[1] == ':') {
                     if (!test_mode) {
                         float val = 0.0f;
                         sscanf(&cmd_buffer[2], "%f", &val);
                         target_y = val;
                         asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
-                        serial.printf(">> Cible Y = %.1f mm\r\n", target_y);
+                        serial.printf(">> Y=%.1f\r\n", target_y);
                     } else {
-                        serial.send(">> Commande position désactivée en mode test\r\n");
+                        serial.send(">> Err: mode MANUEL\r\n");
                     }
                 }
-                // Parser Z:xxx (Rotation en degrés) - uniquement en mode asservi
+                // Parser Z:xxx (Rotation en degrés) - uniquement en mode auto
                 else if (cmd_buffer[0] == 'Z' && cmd_buffer[1] == ':') {
                     if (!test_mode) {
                         float val = 0.0f;
                         sscanf(&cmd_buffer[2], "%f", &val);
                         target_z = val;
                         asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
-                        serial.printf(">> Cible Z = %.1f°\r\n", target_z);
+                        serial.printf(">> Z=%.1f\r\n", target_z);
                     } else {
-                        serial.send(">> Commande position désactivée en mode test\r\n");
+                        serial.send(">> Err: mode MANUEL\r\n");
                     }
                 }
                 

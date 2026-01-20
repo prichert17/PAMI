@@ -1,83 +1,131 @@
-// Code pour l'ESP32
+// Code pour l'ESP32 - Contrôle robot PAMI
 #include <HardwareSerial.h>
 
-// Définition des pins UART pour l'ESP32 (à adapter selon votre carte)
-// Sur beaucoup d'ESP32 WROOM, Serial2 est sur 16(RX) et 17(TX)
+// ============================================
+// CONFIGURATION
+// ============================================
 #define RXD2 16
 #define TXD2 17
+#define SERIAL_BAUD 115200
 
-// *** MODE DE FONCTIONNEMENT ***
-// true = Mode asservissement en position (X, Y, Z, rotation)
-// false = Mode vitesse moteurs (M1, M2)
-bool MODE_POSITION = true;
+// ============================================
+// VARIABLES GLOBALES
+// ============================================
+bool mode_auto = false;  // false = MANUEL, true = AUTO
 
-void setup() {
-  // Serial pour le debug sur l'ordinateur
-  Serial.begin(115200);
-  
-  // Serial2 pour parler au STM32
-  // Format: Serial2.begin(BaudRate, Protocol, RX_Pin, TX_Pin);
-  // ASSUREZ-VOUS QUE LE BAUDRATE (115200) EST LE MÊME QUE SUR LE STM32
-  Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
-  
-  Serial.println("Démarrage du test UART vers STM32...");
-  if (MODE_POSITION)
-    Serial2.print("mode\n"); // Mode true : ASSERVISSEMENT POSITION, Mode false = VITESSE MOTEURS
+// Consignes moteurs (mode manuel)
+int16_t motor1_cmd = 0;
+int16_t motor2_cmd = 0;
+
+// Consignes position (mode auto)
+float target_x = 0.0f;
+float target_y = 0.0f;
+
+// ============================================
+// FONCTIONS D'ENVOI UART (rapide, sans delay)
+// ============================================
+inline void sendToSTM32(const char* cmd) {
+  Serial2.println(cmd);
 }
 
-void loop() {
-  // Variables statiques pour gérer le temps sans bloquer la boucle
-  static unsigned long previousMillis = 0;
-  static bool toggle = false;
-  const long interval = 2000;
+void sendMotor1(int16_t val) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "M1:%d", val);
+  sendToSTM32(buf);
+}
 
-  // 1. Lecture des données reçues de Serial2 (STM32) et renvoi vers Serial (PC)
+void sendMotor2(int16_t val) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "M2:%d", val);
+  sendToSTM32(buf);
+}
+
+void sendMotors(int16_t m1, int16_t m2) {
+  sendMotor1(m1);
+  sendMotor2(m2);
+}
+
+void sendPositionX(float x) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "X:%.1f", x);
+  sendToSTM32(buf);
+}
+
+void sendPositionY(float y) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "Y:%.1f", y);
+  sendToSTM32(buf);
+}
+
+void sendPosition(float x, float y) {
+  sendPositionX(x);
+  sendPositionY(y);
+}
+
+void setModeManuel() {
+  mode_auto = false;
+  sendToSTM32("mode manuel");
+  Serial.println(">> Mode MANUEL");
+}
+
+void setModeAuto() {
+  mode_auto = true;
+  sendToSTM32("mode auto");
+  Serial.println(">> Mode AUTO");
+}
+
+void stopMotors() {
+  motor1_cmd = 0;
+  motor2_cmd = 0;
+  sendToSTM32("stop");
+  Serial.println(">> STOP");
+}
+
+void setLED(bool on) {
+  sendToSTM32(on ? "on" : "off");
+  Serial.printf(">> LED %s\n", on ? "ON" : "OFF");
+}
+
+
+// ============================================
+// RECEPTION DONNEES STM32
+// ============================================
+void receiveFromSTM32() {
   while (Serial2.available()) {
-    char c = Serial2.read();
-    Serial.write(c);
+    Serial.write(Serial2.read());
   }
+}
 
-  // 2. Envoi périodique non bloquant (toutes les 2 secondes)
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-    
-    if (MODE_POSITION) {
-      // *** MODE ASSERVISSEMENT EN POSITION ***
-      if (!toggle) {
-        Serial2.print("on\n");
-        delay(10);
-        Serial2.print("X:100\n");
-        delay(10);
-        Serial2.print("Y:200\n");
-        delay(10);
-        Serial2.print("Z:45\n"); // Rotation en degrés
+// ============================================
+// SETUP
+// ============================================
+void setup() {
+  Serial.begin(SERIAL_BAUD);
+  Serial2.begin(SERIAL_BAUD, SERIAL_8N1, RXD2, TXD2);
+  
+  Serial.println("\n=== PAMI ESP32 Control ===");
+  Serial.println("mode auto   : Mode automatique");
+  Serial.println("mode manuel : Mode manuel");
+  Serial.println("--- Mode AUTO ---");
+  Serial.println("  X:xxx Y:xxx XY:xxx,yyy");
+  Serial.println("--- Mode MANUEL ---");
+  Serial.println("  M1:xxx M2:xxx M:xxx,yyy");
+  Serial.println("  on / off / stop");
+  Serial.println("==========================\n");
+  
+  // Démarrer en mode manuel
+  delay(100);
+  setModeManuel();
+}
 
-      } else {
-        Serial2.print("off\n");
-        delay(10);
-        Serial2.print("X:300\n");
-        delay(10);
-        Serial2.print("Y:150\n");
-        delay(10);
-        Serial2.print("Z:270\n"); // Rotation en degrés
-      }
-    } else {
-      // *** MODE VITESSE MOTEURS ***
-      if (!toggle) {
-        Serial2.print("on\n");
-        delay(10);
-        Serial2.print("M1:500\n");
-        delay(10);
-        Serial2.print("M2:0\n");
-      } else {
-        Serial2.print("off\n");
-        delay(10);
-        Serial2.print("M1:0\n");
-        delay(10);
-        Serial2.print("M2:500\n");
-      }
-    }
-    toggle = !toggle;
-  }
+// ============================================
+// LOOP PRINCIPAL (le plus rapide possible)
+// ============================================
+void loop() {
+  // Réception données STM32 -> PC
+  receiveFromSTM32();
+  setLED(true);
+  delay(1000);
+  setLED(false);
+  delay(1000);
 }
