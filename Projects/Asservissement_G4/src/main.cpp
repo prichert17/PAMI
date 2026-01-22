@@ -195,17 +195,21 @@ int main(void)
             update_battery_leds(voltage1);
             
             // Tension réelle (x2 pour compenser pont diviseur)
-            float voltage_real = voltage1 * 2.0f;
-            
+            int volt_decimale = (int)((voltage1*2) * 100); // *100 pour 2 chiffres
+
             // Position actuelle
             Vector2DAndRotation pos = odometry.get_position();
             float pos_z_deg = pos.teta * 180.0f / M_PI;
             
+            int X_int = (int)pos.x_y.x;
+            int Y_int = (int)pos.x_y.y;
+            int Z_int = (int)pos_z_deg;
+            
             // Affichage unifié
-            serial.printf("[%s] ENC:%ld,%ld SPD:%ld,%ld V:%.2f X:%.1f Y:%.1f Z:%.1f\r\n",
+            serial.printf("[%s] ENC:%ld,%ld SPD:%ld,%ld V:%d X:%d Y:%d Z:%d\r\n",
                          test_mode ? "MANUEL" : "AUTO",
                          enc1, enc2, speed1_ticks, speed2_ticks,
-                         voltage_real, pos.x_y.x, pos.x_y.y, pos_z_deg);
+                         volt_decimale, X_int, Y_int, Z_int);
             
             lastSend = HAL_GetTick();
         }

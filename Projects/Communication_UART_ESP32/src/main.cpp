@@ -124,8 +124,4 @@ void setup() {
 void loop() {
   // Réception données STM32 -> PC
   receiveFromSTM32();
-  setLED(true);
-  delay(1000);
-  setLED(false);
-  delay(1000);
 }
