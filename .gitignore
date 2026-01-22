@@ -40,3 +40,4 @@ _autosave-*
 # --- Dossiers temporaires ---
 /gerbers/
 /fabrication/
+MAIN_PCB_TOFS/#auto_saved_files#
