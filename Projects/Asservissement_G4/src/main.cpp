@@ -18,7 +18,7 @@ SerialOut serial;
 
 // Variables globales
 uint8_t rxByte;
-char cmd_buffer[20] = {0};
+char cmd_buffer[50] = {0};
 uint8_t cmd_idx = 0;
 
 // Variables ADC
@@ -281,39 +281,61 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)
     {
+        // Si on reçoit un caractère de fin de ligne (\n ou \r)
         if (rxByte == '\n' || rxByte == '\r') {
             if (cmd_idx > 0) {
-                cmd_buffer[cmd_idx] = '\0';
                 
-                // Parser on (LED)
-                if (strncmp(cmd_buffer, "on", 2) == 0) {
+                // 1. Fermeture propre de la chaine brute
+                cmd_buffer[cmd_idx] = '\0';
+
+                // 2. LE NETTOYEUR (Supprime les 0 et les caractères invisibles du début)
+                char *p_cmd = cmd_buffer; // Par défaut, on pointe au début
+                
+                // On parcourt le buffer pour trouver la première vraie lettre (ASCII > 32)
+                for(int i = 0; i < cmd_idx; i++) {
+                    if (cmd_buffer[i] > 32) { // 32 = Espace. Donc on cherche une lettre ou un chiffre.
+                        p_cmd = &cmd_buffer[i];
+                        break; // Trouvé ! On arrête de chercher.
+                    }
+                }
+
+                // (Optionnel) Debug pour voir ce qui est vraiment traité
+                // serial.printf("CMD: [%s]\r\n", p_cmd);
+
+                // -----------------------------------------------------------
+                // 3. ANALYSE DES COMMANDES (On utilise p_cmd maintenant !)
+                // -----------------------------------------------------------
+
+                // Parser ON (LED)
+                if (strncmp(p_cmd, "on", 2) == 0) {
                     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
                     serial.send(">> LED ON\r\n");
                 }
-                // Parser off (LED)
-                else if (strncmp(cmd_buffer, "off", 3) == 0) {
+                // Parser OFF (LED)
+                else if (strncmp(p_cmd, "off", 3) == 0) {
                     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
                     serial.send(">> LED OFF\r\n");
                 }
-                // Parser stop (arrêt d'urgence)
-                else if (strncmp(cmd_buffer, "stop", 4) == 0) {
+                // Parser STOP (Arrêt d'urgence)
+                else if (strncmp(p_cmd, "stop", 4) == 0) {
                     wheels[0].set_pwm(0);
                     wheels[1].set_pwm(0);
                     asserv.stop_asserv();
                     serial.send(">> MOTORS STOPPED\r\n");
                 }
-                // Parser mode manuel
-                else if (strncmp(cmd_buffer, "mode manuel", 11) == 0) {
+                // Parser MODE MANUEL
+                else if (strncmp(p_cmd, "mode manuel", 11) == 0) {
                     test_mode = true;
                     serial.send(">> MANUEL\r\n");
                     asserv.stop_asserv();
                     wheels[0].set_pwm(0);
                     wheels[1].set_pwm(0);
                 }
-                // Parser mode auto
-                else if (strncmp(cmd_buffer, "mode auto", 9) == 0) {
+                // Parser MODE AUTO
+                else if (strncmp(p_cmd, "mode auto", 9) == 0) {
                     test_mode = false;
                     serial.send(">> AUTO\r\n");
+                    // On verrouille la position cible sur la position actuelle pour ne pas partir en fou
                     Vector2DAndRotation current_pos = odometry.get_position();
                     target_x = current_pos.x_y.x;
                     target_y = current_pos.x_y.y;
@@ -321,11 +343,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     asserv.set_target_position(Vector2DAndRotation(target_x, target_y, current_pos.teta));
                     asserv.start_asserv();
                 }
-                // Parser M1:xxx (PWM -1000 à +1000) - uniquement en mode manuel
-                else if (cmd_buffer[0] == 'M' && cmd_buffer[1] == '1' && cmd_buffer[2] == ':') {
+                // Parser M1:xxx (PWM)
+                else if (p_cmd[0] == 'M' && p_cmd[1] == '1' && p_cmd[2] == ':') {
                     if (test_mode) {
                         int val = 0;
-                        sscanf(&cmd_buffer[3], "%d", &val);
+                        sscanf(&p_cmd[3], "%d", &val); // Lecture depuis p_cmd
                         if (val >= -1000 && val <= 1000) {
                             wheels[0].set_pwm(val);
                             serial.printf(">> M1=%d\r\n", val);
@@ -334,11 +356,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         serial.send(">> Err: mode AUTO\r\n");
                     }
                 }
-                // Parser M2:xxx (PWM -1000 à +1000) - uniquement en mode manuel
-                else if (cmd_buffer[0] == 'M' && cmd_buffer[1] == '2' && cmd_buffer[2] == ':') {
+                // Parser M2:xxx (PWM)
+                else if (p_cmd[0] == 'M' && p_cmd[1] == '2' && p_cmd[2] == ':') {
                     if (test_mode) {
                         int val = 0;
-                        sscanf(&cmd_buffer[3], "%d", &val);
+                        sscanf(&p_cmd[3], "%d", &val);
                         if (val >= -1000 && val <= 1000) {
                             wheels[1].set_pwm(val);
                             serial.printf(">> M2=%d\r\n", val);
@@ -347,11 +369,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         serial.send(">> Err: mode AUTO\r\n");
                     }
                 }
-                // Parser X:xxx (Position X en mm) - uniquement en mode auto
-                else if (cmd_buffer[0] == 'X' && cmd_buffer[1] == ':') {
+                // Parser X:xxx (Position)
+                else if (p_cmd[0] == 'X' && p_cmd[1] == ':') {
                     if (!test_mode) {
                         float val = 0.0f;
-                        sscanf(&cmd_buffer[2], "%f", &val);
+                        sscanf(&p_cmd[2], "%f", &val);
                         target_x = val;
                         asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
                         serial.printf(">> X=%.1f\r\n", target_x);
@@ -359,11 +381,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         serial.send(">> Err: mode MANUEL\r\n");
                     }
                 }
-                // Parser Y:xxx (Position Y en mm) - uniquement en mode auto
-                else if (cmd_buffer[0] == 'Y' && cmd_buffer[1] == ':') {
+                // Parser Y:xxx (Position)
+                else if (p_cmd[0] == 'Y' && p_cmd[1] == ':') {
                     if (!test_mode) {
                         float val = 0.0f;
-                        sscanf(&cmd_buffer[2], "%f", &val);
+                        sscanf(&p_cmd[2], "%f", &val);
                         target_y = val;
                         asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
                         serial.printf(">> Y=%.1f\r\n", target_y);
@@ -371,11 +393,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         serial.send(">> Err: mode MANUEL\r\n");
                     }
                 }
-                // Parser Z:xxx (Rotation en degrés) - uniquement en mode auto
-                else if (cmd_buffer[0] == 'Z' && cmd_buffer[1] == ':') {
+                // Parser Z:xxx (Rotation)
+                else if (p_cmd[0] == 'Z' && p_cmd[1] == ':') {
                     if (!test_mode) {
                         float val = 0.0f;
-                        sscanf(&cmd_buffer[2], "%f", &val);
+                        sscanf(&p_cmd[2], "%f", &val);
                         target_z = val;
                         asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
                         serial.printf(">> Z=%.1f\r\n", target_z);
@@ -384,15 +406,31 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     }
                 }
                 
-                cmd_idx = 0;  // Reset buffer
+                // 4. NETTOYAGE FINAL
+                cmd_idx = 0;
+                memset(cmd_buffer, 0, sizeof(cmd_buffer)); // Reset total du buffer
             }
         }
         else {
-            if (cmd_idx < 19) {
+            // Remplissage du buffer
+            if (cmd_idx < 49) { //buffer de 50
                 cmd_buffer[cmd_idx++] = rxByte;
+            } else {
+                 cmd_idx = 0; // Sécurité anti-débordement
             }
         }
 
+        // Relance l'écoute
+        HAL_UART_Receive_IT(&huart1, &rxByte, 1);
+    }
+}
+// Gère les erreurs UART (Overrun, Noise, Framing...)
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        // En cas d'erreur (souvent Overrun), on relance simplement l'écoute
+        // Sinon l'UART reste bloqué à jamais
         HAL_UART_Receive_IT(&huart1, &rxByte, 1);
     }
 }

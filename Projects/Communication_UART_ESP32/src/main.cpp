@@ -42,6 +42,7 @@ void sendMotor2(int16_t val) {
 
 void sendMotors(int16_t m1, int16_t m2) {
   sendMotor1(m1);
+  delay(5);
   sendMotor2(m2);
 }
 
@@ -116,6 +117,17 @@ void setup() {
   // Démarrer en mode manuel
   delay(100);
   setModeManuel();
+  //setModeAuto();
+  delay(100);
+  
+  // Test rapide moteurs
+  sendMotors(200, 200);   // Avant
+  delay(2000);
+  sendMotors(0, 0);       // Stop
+  delay(1000);
+  sendMotors(-200, -200); // Arrière
+  delay(2000);
+  stopMotors();           // Fin
 }
 
 // ============================================
