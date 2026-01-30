@@ -178,6 +178,9 @@ int main(void)
             // Conversion rad/s -> ticks/s
             int32_t speed1_ticks = (int32_t)(speed1 * 1200 / (2.0f * M_PI));
             int32_t speed2_ticks = (int32_t)(speed2 * 1200 / (2.0f * M_PI));
+
+            int16_t pwm1 = wheels[1].current_pwm; // M1
+            int16_t pwm2 = wheels[0].current_pwm; // M2
             
             // Lecture ADC1 (PB0 - Canal 15)
             adc_values = 0;
@@ -206,10 +209,11 @@ int main(void)
             int Z_int = (int)pos_z_deg;
             
             // Affichage unifié
-            serial.printf("[%s] ENC:%ld,%ld SPD:%ld,%ld V:%d X:%d Y:%d Z:%d\r\n",
-                         test_mode ? "MANUEL" : "AUTO",
-                         enc1, enc2, speed1_ticks, speed2_ticks,
-                         volt_decimale, X_int, Y_int, Z_int);
+            serial.printf("[%s] PWM:%d,%d ENC:%ld,%ld SPD:%ld,%ld V:%d X:%d Y:%d Z:%d\r\n",
+                          test_mode ? "MANUEL" : "AUTO",
+                          pwm1, pwm2,  // <--- Ajout des PWM ici
+                          enc1, enc2, speed1_ticks, speed2_ticks,
+                          volt_decimale, (int)pos.x_y.x, (int)pos.x_y.y, (int)pos_z_deg);
             
             lastSend = HAL_GetTick();
         }

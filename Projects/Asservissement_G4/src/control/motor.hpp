@@ -28,6 +28,7 @@ public:
     void set_pwm(int16_t duty_cycle);  // -1000 à +1000
     void set_motor_power(int32_t power) { set_pwm((int16_t)power); }  // Alias pour compatibilité
     int32_t get_encoder_count();
+    int16_t current_pwm = 0;
     float get_speed();
     void update_speed(float dt);
     
