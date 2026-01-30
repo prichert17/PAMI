@@ -114,26 +114,44 @@ void setup() {
   Serial.println("  on / off / stop");
   Serial.println("==========================\n");
   
-  // Démarrer en mode manuel
+  // Démarrer en mode AUTO
   delay(100);
-  setModeManuel();
   //setModeAuto();
-  delay(100);
-  
-  // Test rapide moteurs
-  sendMotors(200, 200);   // Avant
-  delay(2000);
-  sendMotors(0, 0);       // Stop
-  delay(1000);
-  sendMotors(-200, -200); // Arrière
-  delay(2000);
-  stopMotors();           // Fin
+  setModeManuel();
 }
 
 // ============================================
-// LOOP PRINCIPAL (le plus rapide possible)
+// LOOP - Test 100 -> 1000 -> stop
 // ============================================
+int step = 0;
+unsigned long timer = 0;
+
 void loop() {
-  // Réception données STM32 -> PC
   receiveFromSTM32();
+  if (step == 0 && millis() > 1000) {
+    Serial.println(">> Reset de la position");
+    sendToSTM32("reset");
+    step = 1;
+    timer = millis();
+  }
+  // Étape 1: Envoi 100
+  if (step == 1 && millis() - timer > 2000) {
+    sendMotors(100,100);
+    Serial.println(">> Envoi M1:100 M2:100");
+    timer = millis();
+    step = 2;
+  }
+  // Étape 2: Envoi 1000 après 3s
+  else if (step == 2 && millis() - timer > 3000) {
+    sendMotors(200, 0);
+    Serial.println(">> Envoi M1:200 M2:0");
+    timer = millis();
+    step = 3;
+  }
+  // Étape 3: Stop après 3s
+  else if (step == 3 && millis() - timer > 3000) {
+    stopMotors();
+    Serial.println(">> STOP");
+    step = 4;
+  }
 }
