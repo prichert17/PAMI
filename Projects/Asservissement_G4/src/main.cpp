@@ -75,9 +75,9 @@ bool test_mode = true;
 
 // Moteurs utilisant la classe Wheel
 std::array<Wheel, 3> wheels = {
-    Wheel(1, 1200, 29.0f, 0.0f),     // Moteur 1
-    Wheel(2, 1200, 29.0f, 180.0f),   // Moteur 2
-    Wheel(3, 1200, 29.0f, 0.0f)      // Moteur 3 (réserve)
+    Wheel(1, 1200, 21.5f, 0.0f),     // Moteur 1
+    Wheel(2, 1200, 21.5f, 180.0f),   // Moteur 2
+    Wheel(3, 1200, 21.5f, 0.0f)      // Moteur 3 (réserve)
 };
 
 // Odométrie et asservissement
@@ -165,9 +165,6 @@ int main(void)
     while (1) {
         // Affichage toutes les 500ms (dans les deux modes)
         if (HAL_GetTick() - lastSend > 500) {
-            // Mise à jour des vitesses
-            wheels[0].update_speed(0.5f);
-            wheels[1].update_speed(0.5f);
             
             // Lecture des encodeurs et vitesses
             int32_t enc1 = wheels[1].get_encoder_count();
@@ -175,9 +172,10 @@ int main(void)
             float speed1 = wheels[1].get_speed();
             float speed2 = wheels[0].get_speed();
             
-            // Conversion rad/s -> ticks/s
-            int32_t speed1_ticks = (int32_t)(speed1 * 1200 / (2.0f * M_PI));
-            int32_t speed2_ticks = (int32_t)(speed2 * 1200 / (2.0f * M_PI));
+            // --- CONVERSION EN MM/S (Plus lisible) ---
+            // V = omega * R
+            int32_t speed1_mm_s = (int32_t)(speed1 * 21.5f);
+            int32_t speed2_mm_s = (int32_t)(speed2 * 21.5f);
 
             int16_t pwm1 = wheels[1].current_pwm; // M1
             int16_t pwm2 = wheels[0].current_pwm; // M2
@@ -204,15 +202,12 @@ int main(void)
             Vector2DAndRotation pos = odometry.get_position();
             float pos_z_deg = pos.teta * 180.0f / M_PI;
             
-            int X_int = (int)pos.x_y.x;
-            int Y_int = (int)pos.x_y.y;
-            int Z_int = (int)pos_z_deg;
             
             // Affichage unifié
             serial.printf("[%s] PWM:%d,%d ENC:%ld,%ld SPD:%ld,%ld V:%d X:%d Y:%d Z:%d\r\n",
                           test_mode ? "MANUEL" : "AUTO",
                           pwm1, pwm2,  // <--- Ajout des PWM ici
-                          enc1, enc2, speed1_ticks, speed2_ticks,
+                          enc1, enc2, speed1_mm_s, speed2_mm_s,
                           volt_decimale, (int)pos.x_y.x, (int)pos.x_y.y, (int)pos_z_deg);
             
             lastSend = HAL_GetTick();
