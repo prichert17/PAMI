@@ -76,7 +76,7 @@ bool test_mode = true;
 // Moteurs utilisant la classe Wheel
 std::array<Wheel, 3> wheels = {
     Wheel(1, 1200, 21.5f, 0.0f),     // Moteur 1
-    Wheel(2, 1200, 21.5f, 180.0f),   // Moteur 2
+    Wheel(2, 1200, 21.5f, 0.0f),   // Moteur 2
     Wheel(3, 1200, 21.5f, 0.0f)      // Moteur 3 (réserve)
 };
 
@@ -204,7 +204,7 @@ int main(void)
             
             
             // Affichage unifié
-            serial.printf("[%s] PWM:%d,%d ENC:%ld,%ld SPD:%ld,%ld V:%d X:%d Y:%d Z:%d\r\n",
+            serial.printf("[%s] PWM:%d,%d ENC:%ld,%ld SPD:%ld,%ld V:%d || X:%d Y:%d Z:%d\r\n",
                           test_mode ? "MANUEL" : "AUTO",
                           pwm1, pwm2,
                           enc1, enc2, speed1_mm_s, speed2_mm_s,
@@ -321,6 +321,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     wheels[1].set_pwm(0);
                     asserv.stop_asserv();
                     serial.send(">> MOTORS STOPPED\r\n");
+                }
+                // Parser RESET (Réinitialisation position)
+                else if (strncmp(p_cmd, "reset", 5) == 0) {
+                    odometry.reset_position(0.0f, 0.0f, 0.0f);
+                    serial.send(">> POSITION RESET\r\n");
                 }
                 // Parser MODE MANUEL
                 else if (strncmp(p_cmd, "mode manuel", 11) == 0) {
