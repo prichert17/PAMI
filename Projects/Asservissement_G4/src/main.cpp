@@ -376,11 +376,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 // Parser X:xxx (Position)
                 else if (p_cmd[0] == 'X' && p_cmd[1] == ':') {
                     if (!test_mode) {
-                        float val = 0.0f;
-                        sscanf(&p_cmd[2], "%f", &val);
-                        target_x = val;
+                        int val = 0;
+                        sscanf(&p_cmd[2], "%d", &val);
+                        target_x = (float)val;
                         asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
-                        serial.printf(">> X=%.1f\r\n", target_x);
+                        serial.printf(">> X=%d\r\n", val);
                     } else {
                         serial.send(">> Err: mode MANUEL\r\n");
                     }
@@ -388,11 +388,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 // Parser Y:xxx (Position)
                 else if (p_cmd[0] == 'Y' && p_cmd[1] == ':') {
                     if (!test_mode) {
-                        float val = 0.0f;
-                        sscanf(&p_cmd[2], "%f", &val);
-                        target_y = val;
+                        int val = 0;
+                        sscanf(&p_cmd[2], "%d", &val);
+                        target_y = (float)val;
                         asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
-                        serial.printf(">> Y=%.1f\r\n", target_y);
+                        serial.printf(">> Y=%d\r\n", val);
                     } else {
                         serial.send(">> Err: mode MANUEL\r\n");
                     }
@@ -400,11 +400,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 // Parser Z:xxx (Rotation)
                 else if (p_cmd[0] == 'Z' && p_cmd[1] == ':') {
                     if (!test_mode) {
-                        float val = 0.0f;
-                        sscanf(&p_cmd[2], "%f", &val);
-                        target_z = val;
+                        int val = 0;
+                        sscanf(&p_cmd[2], "%d", &val);
+                        target_z = (float)val;
                         asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
-                        serial.printf(">> Z=%.1f\r\n", target_z);
+                        serial.printf(">> Z=%d\r\n", val);
                     } else {
                         serial.send(">> Err: mode MANUEL\r\n");
                     }

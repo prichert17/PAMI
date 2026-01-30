@@ -28,11 +28,12 @@ Wheel::Wheel(uint8_t id, float encoder_steps, float radius, float angle)
 // duty_cycle : entre -1000 (Recule max) et +1000 (Avance max)
 void Wheel::set_pwm(int16_t duty_cycle) {
     
-    this->current_pwm = duty_cycle;
-
     // 1. Limitation de sécurité (Clamping)
     if (duty_cycle > 1000) duty_cycle = 1000;
     if (duty_cycle < -1000) duty_cycle = -1000;
+
+    // Sauvegarde de la commande réelle (après clamping, avant inversion hardware)
+    this->current_pwm = duty_cycle;
 
     // Inversion du sens pour la roue droite
     if (wheel_id == 2) {

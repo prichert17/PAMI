@@ -18,8 +18,8 @@ int16_t motor1_cmd = 0;
 int16_t motor2_cmd = 0;
 
 // Consignes position (mode auto)
-float target_x = 0.0f;
-float target_y = 0.0f;
+int16_t target_x = 0;
+int16_t target_y = 0;
 
 // ============================================
 // FONCTIONS D'ENVOI UART (rapide, sans delay)
@@ -46,20 +46,21 @@ void sendMotors(int16_t m1, int16_t m2) {
   sendMotor2(m2);
 }
 
-void sendPositionX(float x) {
+void sendPositionX(int16_t x) {
   char buf[16];
-  snprintf(buf, sizeof(buf), "X:%.1f", x);
+  snprintf(buf, sizeof(buf), "X:%d", x);
   sendToSTM32(buf);
 }
 
-void sendPositionY(float y) {
+void sendPositionY(int16_t y) {
   char buf[16];
-  snprintf(buf, sizeof(buf), "Y:%.1f", y);
+  snprintf(buf, sizeof(buf), "Y:%d", y);
   sendToSTM32(buf);
 }
 
-void sendPosition(float x, float y) {
+void sendPosition(int16_t x, int16_t y) {
   sendPositionX(x);
+  delay(5);
   sendPositionY(y);
 }
 
@@ -116,8 +117,8 @@ void setup() {
   
   // Démarrer en mode AUTO
   delay(100);
-  //setModeAuto();
-  setModeManuel();
+  setModeAuto();
+  //setModeManuel();
 }
 
 // ============================================
@@ -134,22 +135,15 @@ void loop() {
     step = 1;
     timer = millis();
   }
-  // Étape 1: Envoi 100
+  // Étape 1: Envoi 1000
   if (step == 1 && millis() - timer > 2000) {
-    sendMotors(100,100);
-    Serial.println(">> Envoi M1:100 M2:100");
-    timer = millis();
-    step = 2;
-  }
-  // Étape 2: Envoi 1000 après 3s
-  else if (step == 2 && millis() - timer > 3000) {
-    sendMotors(200, 0);
-    Serial.println(">> Envoi M1:200 M2:0");
+    sendPosition(1000,1000);
+    Serial.println(">> Envoi X:1000 Y:1000");
     timer = millis();
     step = 3;
   }
-  // Étape 3: Stop après 3s
-  else if (step == 3 && millis() - timer > 3000) {
+  // Étape 3: Stop après 15s
+  else if (step == 3 && millis() - timer > 15000) {
     stopMotors();
     Serial.println(">> STOP");
     step = 4;
