@@ -32,6 +32,11 @@ void Wheel::set_pwm(int16_t duty_cycle) {
     if (duty_cycle > 1000) duty_cycle = 1000;
     if (duty_cycle < -1000) duty_cycle = -1000;
 
+    // Inversion du sens pour la roue droite
+    if (wheel_id == 2) {
+        duty_cycle = -duty_cycle;
+    }
+
     // 2. Récupération dynamique de l'ARR (votre valeur 8499)
     // Cela rend le code compatible peu importe la fréquence PWM choisie dans CubeMX
     uint32_t autoreload = __HAL_TIM_GET_AUTORELOAD(pwm_timer);
@@ -52,9 +57,10 @@ void Wheel::set_pwm(int16_t duty_cycle) {
 // Lecture brute du compteur encodeur
 int32_t Wheel::get_encoder_count() {
     if (encoder_timer == nullptr) return 0;
-    
+    int32_t count = (int32_t)__HAL_TIM_GET_COUNTER(encoder_timer);
+
     // On récupère la valeur brute du compteur
-    return (int32_t)(__HAL_TIM_GET_COUNTER(encoder_timer));
+    return -count;
 }
 
 // Calcul de la vitesse avec gestion du débordement

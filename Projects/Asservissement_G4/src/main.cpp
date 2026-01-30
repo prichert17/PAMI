@@ -170,10 +170,10 @@ int main(void)
             wheels[1].update_speed(0.5f);
             
             // Lecture des encodeurs et vitesses
-            int32_t enc1 = wheels[0].get_encoder_count();
-            int32_t enc2 = wheels[1].get_encoder_count();
-            float speed1 = wheels[0].get_speed();
-            float speed2 = wheels[1].get_speed();
+            int32_t enc1 = wheels[1].get_encoder_count();
+            int32_t enc2 = wheels[0].get_encoder_count();
+            float speed1 = wheels[1].get_speed();
+            float speed2 = wheels[0].get_speed();
             
             // Conversion rad/s -> ticks/s
             int32_t speed1_ticks = (int32_t)(speed1 * 1200 / (2.0f * M_PI));
