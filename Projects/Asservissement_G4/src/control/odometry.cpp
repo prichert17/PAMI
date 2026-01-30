@@ -21,8 +21,8 @@ void Odometry::update_odometry() {
     }
     
     // Pour 2 roues différentielles (roues 0 et 1)
-    float v_left = (*wheels)[1].get_speed() * CONSTANTS::WHEEL_RADIUS;
-    float v_right = (*wheels)[0].get_speed() * CONSTANTS::WHEEL_RADIUS;
+    float v_left = (*wheels)[0].get_speed() * CONSTANTS::WHEEL_RADIUS;
+    float v_right = (*wheels)[1].get_speed() * CONSTANTS::WHEEL_RADIUS;
     
     // Calcul de la vitesse linéaire et angulaire du robot
     float v_linear = (v_right + v_left) / 2.0f;

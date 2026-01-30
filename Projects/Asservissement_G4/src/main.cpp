@@ -167,18 +167,18 @@ int main(void)
         if (HAL_GetTick() - lastSend > 500) {
             
             // Lecture des encodeurs et vitesses
-            int32_t enc1 = wheels[1].get_encoder_count();
-            int32_t enc2 = wheels[0].get_encoder_count();
-            float speed1 = wheels[1].get_speed();
-            float speed2 = wheels[0].get_speed();
+            int32_t enc1 = wheels[0].get_encoder_count();
+            int32_t enc2 = wheels[1].get_encoder_count();
+            float speed1 = wheels[0].get_speed();
+            float speed2 = wheels[1].get_speed();
             
             // --- CONVERSION EN MM/S (Plus lisible) ---
             // V = omega * R
             int32_t speed1_mm_s = (int32_t)(speed1 * 21.5f);
             int32_t speed2_mm_s = (int32_t)(speed2 * 21.5f);
 
-            int16_t pwm1 = wheels[1].current_pwm; // M1
-            int16_t pwm2 = wheels[0].current_pwm; // M2
+            int16_t pwm1 = wheels[0].current_pwm; // M1 = gauche
+            int16_t pwm2 = wheels[1].current_pwm; // M2 = droite
             
             // Lecture ADC1 (PB0 - Canal 15)
             adc_values = 0;
@@ -206,7 +206,7 @@ int main(void)
             // Affichage unifié
             serial.printf("[%s] PWM:%d,%d ENC:%ld,%ld SPD:%ld,%ld V:%d X:%d Y:%d Z:%d\r\n",
                           test_mode ? "MANUEL" : "AUTO",
-                          pwm1, pwm2,  // <--- Ajout des PWM ici
+                          pwm1, pwm2,
                           enc1, enc2, speed1_mm_s, speed2_mm_s,
                           volt_decimale, (int)pos.x_y.x, (int)pos.x_y.y, (int)pos_z_deg);
             

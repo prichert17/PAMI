@@ -10,11 +10,11 @@ Wheel::Wheel(uint8_t id, float encoder_steps, float radius, float angle)
 {
     // Attribution des timers selon l'ID de la roue
     if (id == 1) {
-        encoder_timer = &htim2;  // 32 bits
+        encoder_timer = &htim3;  // 16 bits
         pwm_timer = &htim1;
         pwm_channel = TIM_CHANNEL_1;
     } else if (id == 2) {
-        encoder_timer = &htim3;  // 16 bits !
+        encoder_timer = &htim2;  // 32 bits
         pwm_timer = &htim16;
         pwm_channel = TIM_CHANNEL_1;
     } else if (id == 3) {
