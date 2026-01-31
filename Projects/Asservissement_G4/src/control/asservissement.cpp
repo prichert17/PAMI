@@ -115,45 +115,65 @@ void Asserv_Position::update_asserv(){
     while (angle_error > M_PI)  angle_error -= 2.0 * M_PI;
     while (angle_error < -M_PI) angle_error += 2.0 * M_PI;
 
-    // 3. Gestion de la marche arrière (Si la cible est derrière, on recule)
-    if (angle_error > M_PI_2 || angle_error < -M_PI_2) {
-        dist_to_target = -dist_to_target;
-        angle_error = angle_error > 0 ? angle_error - M_PI : angle_error + M_PI;
-    }
-
-    // 4. Si on est très proche, on s'aligne sur l'angle final (Target Theta)
-    if (abs(dist_to_target) < 10.0) { // 10mm de tolérance
+    // Si on est très proche de la cible -> Mode "alignement final"
+    if (dist_to_target < 30.0) {        //30 mm
+        // On ne bouge plus en linéaire, on s'aligne juste sur l'angle final
+        dist_to_target = 0;
+        
         double final_angle_err = target_position.teta - current_pos.teta;
         while (final_angle_err > M_PI)  final_angle_err -= 2.0 * M_PI;
         while (final_angle_err < -M_PI) final_angle_err += 2.0 * M_PI;
-        angle_error = final_angle_err;
+        
+        // Si l'angle est aussi bon -> on arrête tout
+        if (fabs(final_angle_err) < 0.1) {  // ~6° de tolérance angle
+            angle_error = 0;
+        } else {
+            angle_error = final_angle_err;
+        }
     }
+    // 4. Gestion marche arrière SEULEMENT si on est loin
+    else if (dist_to_target > 100.0) {  // Seulement si > 100mm
+        if (fabs(angle_error) > M_PI_2) {
+            dist_to_target = -dist_to_target;
+            angle_error = angle_error > 0 ? angle_error - M_PI : angle_error + M_PI;
+        }
+    }
+    // 5. Entre 30mm et 100mm: on avance toujours en marche avant
 
-    // 5. On "triche" en mettant ces valeurs polaires dans le vecteur erreur
-    // .x = Erreur Linéaire
-    // .teta = Erreur Angulaire
-    // .y = Inutilisé
+    // 6. Mise à jour erreurs PID
     position_error_last = position_error_now;
     position_error_now.x_y.x = dist_to_target;
     position_error_now.x_y.y = 0; 
     position_error_now.teta  = angle_error;
 
-    // 6. PID Classique
+    // 7. PID Classique
     error_P = position_error_now;
-    error_I += position_error_now/CONSTANTS::ASSERV_FREQ;
-    error_D = (position_error_now - position_error_last)*CONSTANTS::ASSERV_FREQ;
+    error_I += position_error_now / CONSTANTS::ASSERV_FREQ;
+    error_D = (position_error_now - position_error_last) * CONSTANTS::ASSERV_FREQ;
 
-    // On applique des gains. 
-    // ATTENTION: P, I, D sont globaux. 
-    // Pour équilibrer linéaire/angulaire, on booste souvent l'angle ici.
+    // 8. Anti-windup: Limite l'intégrateur
+    const double MAX_INTEGRAL = 500.0;
+    if (error_I.x_y.x > MAX_INTEGRAL) error_I.x_y.x = MAX_INTEGRAL;
+    if (error_I.x_y.x < -MAX_INTEGRAL) error_I.x_y.x = -MAX_INTEGRAL;
+    if (error_I.teta > MAX_INTEGRAL) error_I.teta = MAX_INTEGRAL;
+    if (error_I.teta < -MAX_INTEGRAL) error_I.teta = -MAX_INTEGRAL;
+
     Vector2DAndRotation cmd_pid = error_P*P + error_I*I + error_D*D;
 
-    // 7. Sortie commande (Linéaire et Angulaire directes)
-    command.x_y.x = cmd_pid.x_y.x; // Vitesse Linéaire
-    command.teta  = cmd_pid.teta * 5.0;  // Vitesse Angulaire (Boosté x5 car l'erreur en radians est petite)
+    // 9. Sortie commande
+    command.x_y.x = cmd_pid.x_y.x;
+    command.teta  = cmd_pid.teta * 5.0; //(*5 car gain angulaire plus faible)
     command.x_y.y = 0;
 
-    command_limiter(1000); // Max PWM
+    // Réduction progressive de la vitesse max quand on approche
+    double max_pwm = 300.0;
+    if (dist_to_target < 200.0) {
+        // Rampe linéaire: 300 à 200mm -> 100 à 30mm
+        max_pwm = 100.0 + (dist_to_target / 200.0) * 200.0;
+        if (max_pwm < 100.0) max_pwm = 100.0;  // Minimum 100
+    }
+
+    command_limiter(max_pwm);
 
     // Utilise Relative car la commande est déjà calculée en "Avance" / "Tourne"
     set_motors_power_relative(command);
