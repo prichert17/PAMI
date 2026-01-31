@@ -161,15 +161,20 @@ void Asserv_Position::update_asserv(){
     Vector2DAndRotation cmd_pid = error_P*P + error_I*I + error_D*D;
 
     // 9. Sortie commande
-    command.x_y.x = cmd_pid.x_y.x;
-    command.teta  = cmd_pid.teta * 5.0; //(*5 car gain angulaire plus faible)
+    // Réduction de la vitesse linéaire si l'angle est mauvais
+    // cos(angle_error) = 1 si bien aligné, 0 si perpendiculaire, -1 si opposé
+    double alignment_factor = cos(angle_error);
+    if (alignment_factor < 0.0) alignment_factor = 0.0;  // Pas de marche avant si angle > 90°
+    
+    command.x_y.x = cmd_pid.x_y.x * alignment_factor;  // Réduit la vitesse si mal orienté
+    command.teta  = cmd_pid.teta * 10.0;  // Augmenté: priorité à la rotation
     command.x_y.y = 0;
 
     // Réduction progressive de la vitesse max quand on approche
     double max_pwm = 300.0;
-    if (dist_to_target < 200.0) {
+    if (fabs(dist_to_target) < 200.0) {
         // Rampe linéaire: 300 à 200mm -> 100 à 30mm
-        max_pwm = 100.0 + (dist_to_target / 200.0) * 200.0;
+        max_pwm = 100.0 + (fabs(dist_to_target) / 200.0) * 200.0;
         if (max_pwm < 100.0) max_pwm = 100.0;  // Minimum 100
     }
 
@@ -194,8 +199,10 @@ void Asserv_Position::set_motors_power_relative(Vector2DAndRotation power){
     double cmd_rot    = power.teta;
 
     // Roue 0 = Gauche, Roue 1 = Droite
-    double speed_left  = cmd_linear - cmd_rot;
-    double speed_right = cmd_linear + cmd_rot;
+    // Pour tourner à droite (teta négatif), gauche doit aller plus vite
+    // Pour tourner à gauche (teta positif), droite doit aller plus vite
+    double speed_left  = cmd_linear + cmd_rot;  // Inversé: + au lieu de -
+    double speed_right = cmd_linear - cmd_rot;  // Inversé: - au lieu de +
 
     (*wheels)[0].set_motor_power((int32_t)speed_left);
     (*wheels)[1].set_motor_power((int32_t)speed_right);

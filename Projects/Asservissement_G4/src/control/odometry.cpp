@@ -26,7 +26,8 @@ void Odometry::update_odometry() {
     
     // Calcul de la vitesse linéaire et angulaire du robot
     float v_linear = (v_right + v_left) / 2.0f;
-    float omega = (v_right - v_left) / wheel_base;
+    // Si roue gauche plus rapide → tourne à droite → omega négatif
+    float omega = (v_left - v_right) / wheel_base;
     
     // Mise à jour de la position
     position.teta += omega * dt;
