@@ -9,7 +9,7 @@ import time
 from collections import deque
 
 # ----- CONFIG -----
-BLUETOOTH_PORT = 'COM8'      # adapte ici !
+BLUETOOTH_PORT = 'COM11'      # adapte ici !
 BAUDRATE = 115200
 TIMEOUT = 1
 
@@ -21,7 +21,7 @@ robot_history = []
 target_history = []
 lock = threading.Lock()
 connection_ok = threading.Event()
-RESET_DIST = 50  # distance seuil (en cm) pour détecter un "reset"
+RESET_DIST = 500  # distance seuil (en mm) pour détecter un "reset"
 start_time = None  # Timer de démarrage
 last_robot_move_time = None
 robot_stopped = False
@@ -46,14 +46,55 @@ def parse_line(line):
                 terrain_str = "Bleu"
             else:
                 terrain_str = "Inconnu"
-    # Target
+    # Target (format: >> X=1000 ou TargetX : ...)
+    m = re.search(r'>>\s*X\s*=\s*([\d\.]+)', line)
+    if m:
+        with lock:
+            target_pos[0] = float(m.group(1))
+    m = re.search(r'>>\s*Y\s*=\s*([\d\.]+)', line)
+    if m:
+        with lock:
+            target_pos[1] = float(m.group(1))
+            target_history.append(tuple(target_pos))
+    # Target (ancien format)
     m = re.search(r'TargetX\s*:\s*([\d\.]+).*TargetY\s*:\s*([\d\.]+)', line)
     if m:
         with lock:
             target_pos[0] = float(m.group(1))
             target_pos[1] = float(m.group(2))
             target_history.append(tuple(target_pos))
-    # Robot
+    # Robot (nouveau format: X:15 Y:0 Z:0 dans les messages [AUTO])
+    m = re.search(r'\|\|\s*X\s*:\s*(-?[\d\.]+)\s*Y\s*:\s*(-?[\d\.]+)', line)
+    if m:
+        new_x = float(m.group(1))
+        new_y = float(m.group(2))
+        with lock:
+            # Démarre le timer si ce n'est pas déjà fait
+            if start_time is None:
+                start_time = time.time()
+            # Détecte un reset si la distance > seuil
+            if robot_history:
+                last_x, last_y = robot_history[-1]
+                dist = ((new_x - last_x) ** 2 + (new_y - last_y) ** 2) ** 0.5
+                if dist > RESET_DIST:
+                    robot_history.clear()
+                    target_history.clear()
+                    robot_pos[0] = 0
+                    robot_pos[1] = 0
+                    target_pos[0] = 0
+                    target_pos[1] = 0
+                    start_time = time.time()  # Redémarre le timer
+                    last_robot_move_time = None
+                    robot_stopped = False
+            # Détecte si le robot a bougé
+            if not robot_history or (new_x, new_y) != robot_history[-1]:
+                last_robot_move_time = time.time()
+                robot_stopped = False
+            robot_pos[0] = new_x
+            robot_pos[1] = new_y
+            robot_history.append((new_x, new_y))
+        return  # Évite de traiter deux fois avec l'ancien format
+    # Robot (ancien format: RobotX : ... RobotY : ...)
     m = re.search(r'RobotX\s*:\s*([\d\.]+).*RobotY\s*:\s*([\d\.]+)', line)
     if m:
         with lock:
@@ -177,20 +218,20 @@ gs = fig.add_gridspec(1, 2, width_ratios=[2.5, 1])
 # Graphique principal
 ax = fig.add_subplot(gs[0])
 ax.set_title("PAMI : Position robot et cible")
-ax.set_xlim(0, 200)
-ax.set_ylim(0, 300)
-ax.set_xlabel("Y (cm)")
-ax.set_ylabel("X (cm)")
+ax.set_xlim(0, 2000)
+ax.set_ylim(0, 3000)
+ax.set_xlabel("Y (mm)")
+ax.set_ylabel("X (mm)")
 
 robot_dot, = ax.plot([], [], 'o', color='red', markersize=16, label="Robot (actuel)")
 target_dot, = ax.plot([], [], '*', color='lime', markersize=20, label="Cible (actuelle)")
 robot_hist_plot, = ax.plot([], [], '.', color='crimson', alpha=0.25, markersize=8, label="Trajet robot")
 target_hist_plot, = ax.plot([], [], '.', color='deepskyblue', alpha=0.7, markersize=18, label="Historique cibles")
 
-text_robot = ax.text(5, 285, "", fontsize=12, color="red", weight="bold")
-text_target = ax.text(5, 272, "", fontsize=12, color="green", weight="bold")
-text_terrain = ax.text(5, 259, "", fontsize=12, color="black", weight="bold")
-text_timer = ax.text(120, 285, "", fontsize=12, color="blue", weight="bold")
+text_robot = ax.text(50, 2850, "", fontsize=12, color="red", weight="bold")
+text_target = ax.text(50, 2720, "", fontsize=12, color="green", weight="bold")
+text_terrain = ax.text(50, 2590, "", fontsize=12, color="black", weight="bold")
+text_timer = ax.text(1200, 2850, "", fontsize=12, color="blue", weight="bold")
 
 ax.legend(loc="lower right")
 
