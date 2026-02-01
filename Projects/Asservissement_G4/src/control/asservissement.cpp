@@ -157,7 +157,17 @@ void Asserv_Position::update_asserv(){
     }
     command.x_y.y = 0;
 
-    command_limiter(400.0);
+    command_limiter(500.0);
+
+    // Rampe d'accélération (limite variation par cycle)
+    static Vector2DAndRotation last_cmd(0, 0, 0);
+    double max_delta = 20.0;  // Max variation par cycle
+    if (command.x_y.x - last_cmd.x_y.x > max_delta) command.x_y.x = last_cmd.x_y.x + max_delta;
+    if (command.x_y.x - last_cmd.x_y.x < -max_delta) command.x_y.x = last_cmd.x_y.x - max_delta;
+    if (command.teta - last_cmd.teta > max_delta) command.teta = last_cmd.teta + max_delta;
+    if (command.teta - last_cmd.teta < -max_delta) command.teta = last_cmd.teta - max_delta;
+    last_cmd = command;
+
     set_motors_power_relative(command);
 }
 
