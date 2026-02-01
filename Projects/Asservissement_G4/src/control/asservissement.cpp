@@ -152,12 +152,14 @@ void Asserv_Position::update_asserv(){
     } 
     // Phase 2: Bien orienté -> avancer
     else {
-        command.teta = error_P.teta * P * 0.5;
         command.x_y.x = error_P.x_y.x * P;
+        command.teta = error_P.teta * P * 40.0;
     }
     command.x_y.y = 0;
 
-    command_limiter(500.0);
+    // Limite seulement le linéaire, pas l'angle
+    if (command.x_y.x > 500.0) command.x_y.x = 500.0;
+    if (command.x_y.x < -500.0) command.x_y.x = -500.0;
 
     // Rampe d'accélération (limite variation par cycle)
     static Vector2DAndRotation last_cmd(0, 0, 0);
