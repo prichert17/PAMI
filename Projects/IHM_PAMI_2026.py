@@ -77,11 +77,17 @@ def parse_line(line):
     if m:
         with lock:
             target_pos[0] = float(m.group(1))
+            # Démarre le timer à l'envoi des coordonnées
+            if start_time is None:
+                start_time = time.time()
     m = re.search(r'>>\s*Y\s*=\s*([\d\.]+)', line)
     if m:
         with lock:
             target_pos[1] = float(m.group(1))
             target_history.append(tuple(target_pos))
+            # Démarre le timer à l'envoi des coordonnées (si pas déjà fait)
+            if start_time is None:
+                start_time = time.time()
     # Target (ancien format)
     m = re.search(r'TargetX\s*:\s*([\d\.]+).*TargetY\s*:\s*([\d\.]+)', line)
     if m:
@@ -97,9 +103,6 @@ def parse_line(line):
         new_angle = float(m.group(3))
         with lock:
             robot_angle = new_angle
-            # Démarre le timer si ce n'est pas déjà fait
-            if start_time is None:
-                start_time = time.time()
             # Détecte un reset si la distance > seuil
             if robot_history:
                 last_x, last_y = robot_history[-1]
@@ -111,7 +114,7 @@ def parse_line(line):
                     robot_pos[1] = 0
                     target_pos[0] = 0
                     target_pos[1] = 0
-                    start_time = time.time()  # Redémarre le timer
+                    start_time = None  # Reset du timer (attendra nouvelles coordonnées)
                     last_robot_move_time = None
                     robot_stopped = False
             # Détecte si le robot a bougé
@@ -128,9 +131,6 @@ def parse_line(line):
         with lock:
             new_x = float(m.group(1))
             new_y = float(m.group(2))
-            # Démarre le timer si ce n'est pas déjà fait
-            if start_time is None:
-                start_time = time.time()
             # Détecte un reset si la distance > seuil
             if robot_history:
                 last_x, last_y = robot_history[-1]
@@ -142,7 +142,7 @@ def parse_line(line):
                     robot_pos[1] = 0
                     target_pos[0] = 0
                     target_pos[1] = 0
-                    start_time = None
+                    start_time = None  # Reset du timer (attendra nouvelles coordonnées)
                     last_robot_move_time = None
                     robot_stopped = False
             # Détecte si le robot a bougé
