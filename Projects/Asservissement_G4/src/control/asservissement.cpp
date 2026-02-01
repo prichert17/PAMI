@@ -102,77 +102,62 @@ void Asserv_Position::update_asserv(){
 
     Vector2DAndRotation current_pos = odometry->get_position();
 
-    // 1. Calcul de l'erreur vectorielle
     double dx = target_position.x_y.x - current_pos.x_y.x;
     double dy = target_position.x_y.y - current_pos.x_y.y;
-    
-    // 2. Conversion en Distance (Rho) et Angle (Alpha)
     double dist_to_target = sqrt(dx*dx + dy*dy);
+
+    // Arrivé à destination -> stop
+    if (dist_to_target < 20.0) {
+        command = Vector2DAndRotation(0, 0, 0);
+        set_motors_power_relative(command);
+        return;
+    }
+
+    // Calcul angle vers cible
     double angle_to_target = atan2(dy, dx);
     double angle_error = angle_to_target - current_pos.teta;
-
-    // Normalisation angle (-PI à PI)
     while (angle_error > M_PI)  angle_error -= 2.0 * M_PI;
     while (angle_error < -M_PI) angle_error += 2.0 * M_PI;
 
-    // Si on est très proche de la cible -> Mode "alignement final"
-    if (dist_to_target < 30.0) {        //30 mm
-        // On ne bouge plus en linéaire, on s'aligne juste sur l'angle final
-        dist_to_target = 0;
-        
-        double final_angle_err = target_position.teta - current_pos.teta;
-        while (final_angle_err > M_PI)  final_angle_err -= 2.0 * M_PI;
-        while (final_angle_err < -M_PI) final_angle_err += 2.0 * M_PI;
-        
-        // Si l'angle est aussi bon -> on arrête tout
-        if (fabs(final_angle_err) < 0.1) {  // ~6° de tolérance angle
-            angle_error = 0;
-        } else {
-            angle_error = final_angle_err;
-        }
-    }
-
-    // 6. Mise à jour erreurs PID
+    // PID sur l'angle
     position_error_last = position_error_now;
+    position_error_now.teta = angle_error;
     position_error_now.x_y.x = dist_to_target;
-    position_error_now.x_y.y = 0; 
-    position_error_now.teta  = angle_error;
 
-    // 7. PID Classique
     error_P = position_error_now;
     error_I += position_error_now / CONSTANTS::ASSERV_FREQ;
     error_D = (position_error_now - position_error_last) * CONSTANTS::ASSERV_FREQ;
 
-    // 8. Anti-windup: Limite l'intégrateur
-    const double MAX_INTEGRAL = 500.0;
-    if (error_I.x_y.x > MAX_INTEGRAL) error_I.x_y.x = MAX_INTEGRAL;
-    if (error_I.x_y.x < -MAX_INTEGRAL) error_I.x_y.x = -MAX_INTEGRAL;
-    if (error_I.teta > MAX_INTEGRAL) error_I.teta = MAX_INTEGRAL;
-    if (error_I.teta < -MAX_INTEGRAL) error_I.teta = -MAX_INTEGRAL;
+    // Anti-windup
+    if (error_I.teta > 50.0) error_I.teta = 50.0;
+    if (error_I.teta < -50.0) error_I.teta = -50.0;
 
-    Vector2DAndRotation cmd_pid = error_P*P + error_I*I + error_D*D;
+    // Hystérésis: seuils différents pour entrer/sortir du mode rotation
+    static bool in_rotation_mode = true;
+    double threshold_enter = 0.4;  // ~23° pour passer en rotation
+    double threshold_exit = 0.15;  // ~9° pour sortir de rotation
 
-    // 9. Sortie commande
-    // Réduction de la vitesse linéaire si l'angle est mauvais
-    // cos(angle_error) = 1 si bien aligné, 0 si perpendiculaire, -1 si opposé
-    double alignment_factor = cos(angle_error);
-    if (alignment_factor < 0.0) alignment_factor = 0.0;  // Pas de marche avant si angle > 90°
-    
-    command.x_y.x = cmd_pid.x_y.x * alignment_factor;  // Réduit la vitesse si mal orienté
-    command.teta  = cmd_pid.teta * 10.0;  // Priorité à la rotation
+    if (fabs(angle_error) > threshold_enter) in_rotation_mode = true;
+    else if (fabs(angle_error) < threshold_exit) in_rotation_mode = false;
+
+    // Phase 1: Mode rotation
+    if (in_rotation_mode) {
+        double cmd_rot = error_P.teta * P + error_I.teta * I + error_D.teta * D;
+        // Boost initial pour vaincre l'inertie
+        double min_cmd = 80.0;
+        if (fabs(cmd_rot) < min_cmd && fabs(angle_error) > 0.05)
+            cmd_rot = (cmd_rot > 0) ? min_cmd : -min_cmd;
+        command.teta = cmd_rot;
+        command.x_y.x = 0;
+    } 
+    // Phase 2: Bien orienté -> avancer
+    else {
+        command.teta = error_P.teta * P * 0.5;
+        command.x_y.x = error_P.x_y.x * P;
+    }
     command.x_y.y = 0;
 
-    // Réduction progressive de la vitesse max quand on approche
-    double max_pwm = 500.0;
-    if (fabs(dist_to_target) < 200.0) {
-        // Rampe linéaire: 500 à 200mm -> 100 à 30mm
-        max_pwm = 100.0 + (fabs(dist_to_target) / 200.0) * 400.0;
-        if (max_pwm < 100.0) max_pwm = 100.0;  // Minimum 100
-    }
-
-    command_limiter(max_pwm);
-
-    // Utilise Relative car la commande est déjà calculée en "Avance" / "Tourne"
+    command_limiter(400.0);
     set_motors_power_relative(command);
 }
 
