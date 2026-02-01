@@ -6,6 +6,7 @@ import matplotlib.animation as animation
 from matplotlib.widgets import Button
 import sys
 import time
+import math
 from collections import deque
 
 # ----- CONFIG -----
@@ -16,6 +17,7 @@ TIMEOUT = 1
 # ----- Variables partagées -----
 terrain_str = "Inconnu"
 robot_pos = [0, 0]
+robot_angle = 0  # Angle du robot en degrés
 target_pos = [0, 0]
 robot_history = []
 target_history = []
@@ -29,7 +31,7 @@ ser = None  # Variable globale pour la connexion série
 message_log = deque(maxlen=25)  # Log des 25 derniers messages
 
 def parse_line(line):
-    global terrain_str, robot_pos, target_pos, start_time, last_robot_move_time, robot_stopped
+    global terrain_str, robot_pos, robot_angle, target_pos, start_time, last_robot_move_time, robot_stopped
     
     # Ajouter le message au log
     with lock:
@@ -64,11 +66,13 @@ def parse_line(line):
             target_pos[1] = float(m.group(2))
             target_history.append(tuple(target_pos))
     # Robot (nouveau format: X:15 Y:0 Z:0 dans les messages [AUTO])
-    m = re.search(r'\|\|\s*X\s*:\s*(-?[\d\.]+)\s*Y\s*:\s*(-?[\d\.]+)', line)
+    m = re.search(r'\|\|\s*X\s*:\s*(-?[\d\.]+)\s*Y\s*:\s*(-?[\d\.]+)\s*Z\s*:\s*(-?[\d\.]+)', line)
     if m:
         new_x = float(m.group(1))
         new_y = float(m.group(2))
+        new_angle = float(m.group(3))
         with lock:
+            robot_angle = new_angle
             # Démarre le timer si ce n'est pas déjà fait
             if start_time is None:
                 start_time = time.time()
@@ -148,7 +152,7 @@ def serial_thread():
 
 def reset_robot(event):
     """Fonction appelée quand on clique sur Reset"""
-    global ser, robot_history, target_history, robot_pos, target_pos, start_time, last_robot_move_time, robot_stopped
+    global ser, robot_history, target_history, robot_pos, robot_angle, target_pos, start_time, last_robot_move_time, robot_stopped
     if ser and ser.is_open:
         try:
             ser.write(b'RESET\n')
@@ -159,6 +163,7 @@ def reset_robot(event):
                 target_history.clear()
                 robot_pos[0] = 0
                 robot_pos[1] = 0
+                robot_angle = 0
                 target_pos[0] = 0
                 target_pos[1] = 0
                 start_time = None
@@ -170,7 +175,7 @@ def reset_robot(event):
 
 def reconnect(event):
     """Fonction appelée quand on clique sur Connect - Réinitialise tout"""
-    global ser, connection_ok, robot_history, target_history, robot_pos, target_pos, start_time, last_robot_move_time, robot_stopped
+    global ser, connection_ok, robot_history, target_history, robot_pos, robot_angle, target_pos, start_time, last_robot_move_time, robot_stopped
     try:
         # Ferme l'ancienne connexion
         if ser and ser.is_open:
@@ -182,6 +187,7 @@ def reconnect(event):
             target_history.clear()
             robot_pos[0] = 0
             robot_pos[1] = 0
+            robot_angle = 0
             target_pos[0] = 0
             target_pos[1] = 0
             start_time = None
@@ -228,6 +234,11 @@ target_dot, = ax.plot([], [], '*', color='lime', markersize=20, label="Cible (ac
 robot_hist_plot, = ax.plot([], [], '.', color='crimson', alpha=0.25, markersize=8, label="Trajet robot")
 target_hist_plot, = ax.plot([], [], '.', color='deepskyblue', alpha=0.7, markersize=18, label="Historique cibles")
 
+# Flèche pour l'orientation du robot
+ARROW_LENGTH = 150  # Longueur de la flèche en mm
+robot_arrow = ax.annotate('', xy=(0, 0), xytext=(0, 0),
+                          arrowprops=dict(arrowstyle='->', color='darkred', lw=2))
+
 text_robot = ax.text(50, 2850, "", fontsize=12, color="red", weight="bold")
 text_target = ax.text(50, 2720, "", fontsize=12, color="green", weight="bold")
 text_terrain = ax.text(50, 2590, "", fontsize=12, color="black", weight="bold")
@@ -257,9 +268,10 @@ btn_connect.on_clicked(reconnect)
 plt.tight_layout()
 
 def update(_):
-    global robot_stopped
+    global robot_stopped, robot_arrow
     with lock:
         rx, ry = robot_pos
+        angle = robot_angle
         tx, ty = target_pos
         rob_hist = list(robot_history)
         tar_hist = list(target_history)
@@ -268,9 +280,19 @@ def update(_):
         last_move = last_robot_move_time
         messages = list(message_log)
     
-    # Axes inversés :
+    # Axes inversés (Y sur axe X, X sur axe Y):
     robot_dot.set_data([ry], [rx])
     target_dot.set_data([ty], [tx])
+    
+    # Mise à jour de la flèche d'orientation
+    # L'angle est en degrés, on le convertit en radians
+    # On ajuste pour le système de coordonnées inversé du graphique
+    angle_rad = math.radians(angle)
+    # dx et dy pour la flèche (dans le système de coordonnées du graphique)
+    dx = ARROW_LENGTH * math.sin(angle_rad)  # direction Y du graphique
+    dy = ARROW_LENGTH * math.cos(angle_rad)  # direction X du graphique
+    robot_arrow.set_position((ry, rx))
+    robot_arrow.xy = (ry + dx, rx + dy)
     
     if rob_hist:
         ys, xs = zip(*rob_hist)
@@ -284,7 +306,7 @@ def update(_):
     else:
         target_hist_plot.set_data([], [])
     
-    text_robot.set_text(f"Robot : ({rx:.1f}, {ry:.1f})")
+    text_robot.set_text(f"Robot : ({rx:.1f}, {ry:.1f}) θ={angle:.1f}°")
     text_target.set_text(f"Cible : ({tx:.1f}, {ty:.1f})")
     text_terrain.set_text(f"Terrain : {terr}")
     
