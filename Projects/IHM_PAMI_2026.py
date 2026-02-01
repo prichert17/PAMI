@@ -30,12 +30,36 @@ robot_stopped = False
 ser = None  # Variable globale pour la connexion série
 message_log = deque(maxlen=25)  # Log des 25 derniers messages
 
+# Variables pour la tension
+voltage_current = 0.0  # Tension actuelle en V
+voltage_min = float('inf')  # Tension minimum reçue
+voltage_last = 0.0  # Dernière tension pour détecter une chute
+voltage_alert = False  # Alerte de chute de tension
+voltage_alert_time = 0  # Temps de l'alerte
+VOLTAGE_DROP_THRESHOLD = 0.1  # Seuil de chute en V (100mV)
+
 def parse_line(line):
     global terrain_str, robot_pos, robot_angle, target_pos, start_time, last_robot_move_time, robot_stopped
+    global voltage_current, voltage_min, voltage_last, voltage_alert, voltage_alert_time
     
     # Ajouter le message au log
     with lock:
         message_log.append(line[:60])  # Limite à 60 caractères
+    
+    # Lecture de la tension (V:320 = 3.20V)
+    m = re.search(r'V\s*:\s*(\d+)', line)
+    if m:
+        voltage_raw = int(m.group(1))
+        voltage_current = voltage_raw / 100.0  # Convertir en Volts
+        with lock:
+            # Détecte une chute brusque de tension
+            if voltage_last > 0 and (voltage_last - voltage_current) > VOLTAGE_DROP_THRESHOLD:
+                voltage_alert = True
+                voltage_alert_time = time.time()
+            voltage_last = voltage_current
+            # Met à jour le minimum
+            if voltage_current > 0 and voltage_current < voltage_min:
+                voltage_min = voltage_current
     
     # Terrain color
     m = re.search(r'Terrain (\w+)', line, re.IGNORECASE)
@@ -153,6 +177,7 @@ def serial_thread():
 def reset_robot(event):
     """Fonction appelée quand on clique sur Reset"""
     global ser, robot_history, target_history, robot_pos, robot_angle, target_pos, start_time, last_robot_move_time, robot_stopped
+    global voltage_current, voltage_min, voltage_last, voltage_alert
     if ser and ser.is_open:
         try:
             ser.write(b'RESET\n')
@@ -169,6 +194,10 @@ def reset_robot(event):
                 start_time = None
                 last_robot_move_time = None
                 robot_stopped = False
+                voltage_current = 0.0
+                voltage_min = float('inf')
+                voltage_last = 0.0
+                voltage_alert = False
                 message_log.append("=== RESET MANUEL ===")
         except Exception as e:
             print(f"Erreur envoi RESET: {e}")
@@ -176,6 +205,7 @@ def reset_robot(event):
 def reconnect(event):
     """Fonction appelée quand on clique sur Connect - Réinitialise tout"""
     global ser, connection_ok, robot_history, target_history, robot_pos, robot_angle, target_pos, start_time, last_robot_move_time, robot_stopped
+    global voltage_current, voltage_min, voltage_last, voltage_alert
     try:
         # Ferme l'ancienne connexion
         if ser and ser.is_open:
@@ -193,6 +223,10 @@ def reconnect(event):
             start_time = None
             last_robot_move_time = None
             robot_stopped = False
+            voltage_current = 0.0
+            voltage_min = float('inf')
+            voltage_last = 0.0
+            voltage_alert = False
             message_log.clear()
             message_log.append("=== RECONNEXION ===")
         
@@ -243,6 +277,11 @@ text_robot = ax.text(50, 2850, "", fontsize=12, color="red", weight="bold")
 text_target = ax.text(50, 2720, "", fontsize=12, color="green", weight="bold")
 text_terrain = ax.text(50, 2590, "", fontsize=12, color="black", weight="bold")
 text_timer = ax.text(1200, 2850, "", fontsize=12, color="blue", weight="bold")
+text_voltage = ax.text(1200, 2720, "", fontsize=12, color="purple", weight="bold")
+
+# Rectangle d'alerte pour la tension (initialement invisible)
+alert_rect = plt.Rectangle((0, 0), 2000, 3000, fill=True, color='red', alpha=0, zorder=10)
+ax.add_patch(alert_rect)
 
 ax.legend(loc="lower right")
 
@@ -268,7 +307,7 @@ btn_connect.on_clicked(reconnect)
 plt.tight_layout()
 
 def update(_):
-    global robot_stopped, robot_arrow
+    global robot_stopped, robot_arrow, voltage_alert
     with lock:
         rx, ry = robot_pos
         angle = robot_angle
@@ -279,6 +318,10 @@ def update(_):
         st = start_time
         last_move = last_robot_move_time
         messages = list(message_log)
+        v_current = voltage_current
+        v_min = voltage_min
+        v_alert = voltage_alert
+        v_alert_time = voltage_alert_time
     
     # Axes inversés (Y sur axe X, X sur axe Y):
     robot_dot.set_data([ry], [rx])
@@ -309,6 +352,32 @@ def update(_):
     text_robot.set_text(f"Robot : ({rx:.1f}, {ry:.1f}) θ={angle:.1f}°")
     text_target.set_text(f"Cible : ({tx:.1f}, {ty:.1f})")
     text_terrain.set_text(f"Terrain : {terr}")
+    
+    # Affichage de la tension
+    if v_current > 0:
+        v_min_display = v_min if v_min != float('inf') else v_current
+        text_voltage.set_text(f"Batterie: {v_current:.2f}V (min: {v_min_display:.2f}V)")
+        # Alerte visuelle si chute de tension
+        if v_alert and (time.time() - v_alert_time) < 3:  # Alerte visible 3 secondes
+            # Clignotement rouge
+            blink = int((time.time() - v_alert_time) * 4) % 2
+            alert_rect.set_alpha(0.3 if blink else 0)
+            text_voltage.set_color('red')
+            text_voltage.set_text(f"⚠ CHUTE TENSION! {v_current:.2f}V (min: {v_min_display:.2f}V)")
+        else:
+            alert_rect.set_alpha(0)
+            voltage_alert = False
+            # Couleur selon niveau de batterie
+            if v_current < 3.0:
+                text_voltage.set_color('red')
+            elif v_current < 3.3:
+                text_voltage.set_color('orange')
+            else:
+                text_voltage.set_color('green')
+    else:
+        text_voltage.set_text("Batterie: --V")
+        text_voltage.set_color('gray')
+        alert_rect.set_alpha(0)
     
     # Affichage des messages (30 derniers, texte plus grand)
     if messages:
