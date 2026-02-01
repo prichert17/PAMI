@@ -131,14 +131,6 @@ void Asserv_Position::update_asserv(){
             angle_error = final_angle_err;
         }
     }
-    // 4. Gestion marche arrière SEULEMENT si on est loin
-    else if (dist_to_target > 100.0) {  // Seulement si > 100mm
-        if (fabs(angle_error) > M_PI_2) {
-            dist_to_target = -dist_to_target;
-            angle_error = angle_error > 0 ? angle_error - M_PI : angle_error + M_PI;
-        }
-    }
-    // 5. Entre 30mm et 100mm: on avance toujours en marche avant
 
     // 6. Mise à jour erreurs PID
     position_error_last = position_error_now;
@@ -167,14 +159,14 @@ void Asserv_Position::update_asserv(){
     if (alignment_factor < 0.0) alignment_factor = 0.0;  // Pas de marche avant si angle > 90°
     
     command.x_y.x = cmd_pid.x_y.x * alignment_factor;  // Réduit la vitesse si mal orienté
-    command.teta  = cmd_pid.teta * 10.0;  // Augmenté: priorité à la rotation
+    command.teta  = cmd_pid.teta * 10.0;  // Priorité à la rotation
     command.x_y.y = 0;
 
     // Réduction progressive de la vitesse max quand on approche
-    double max_pwm = 300.0;
+    double max_pwm = 500.0;
     if (fabs(dist_to_target) < 200.0) {
-        // Rampe linéaire: 300 à 200mm -> 100 à 30mm
-        max_pwm = 100.0 + (fabs(dist_to_target) / 200.0) * 200.0;
+        // Rampe linéaire: 500 à 200mm -> 100 à 30mm
+        max_pwm = 100.0 + (fabs(dist_to_target) / 200.0) * 400.0;
         if (max_pwm < 100.0) max_pwm = 100.0;  // Minimum 100
     }
 
