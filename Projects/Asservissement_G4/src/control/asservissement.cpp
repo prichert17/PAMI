@@ -134,6 +134,7 @@ void Asserv_Position::update_asserv(){
 
     // Hystérésis: seuils différents pour entrer/sortir du mode rotation
     static bool in_rotation_mode = true;
+    static double straight_line_boost = 0.0;  // Boost progressif en ligne droite
     double threshold_enter = 0.4;  // ~23° pour passer en rotation
     double threshold_exit = 0.15;  // ~9° pour sortir de rotation
 
@@ -149,10 +150,23 @@ void Asserv_Position::update_asserv(){
             cmd_rot = (cmd_rot > 0) ? min_cmd : -min_cmd;
         command.teta = cmd_rot;
         command.x_y.x = 0;
+        // Reset du boost en ligne droite dès qu'on entre en rotation
+        straight_line_boost = 0.0;
     } 
     // Phase 2: Bien orienté -> avancer
     else {
-        command.x_y.x = error_P.x_y.x * P;
+        /*
+        // Accélération progressive du boost en ligne droite
+        double max_boost = 300.0;  // Vitesse supplémentaire max
+        double boost_rate = 5.0;   // Incrément par cycle (100Hz -> ~3s pour atteindre max)
+        double angle_tolerance = 0.08;  // ~4.5° - seuil pour considérer l'angle comme correct
+        
+        // N'augmenter le boost que si l'angle est vraiment correct
+        if (fabs(angle_error) < angle_tolerance && straight_line_boost < max_boost) {
+            straight_line_boost += boost_rate;
+            if (straight_line_boost > max_boost) straight_line_boost = max_boost;
+        }*/
+        command.x_y.x = error_P.x_y.x * P + straight_line_boost;
         command.teta = error_P.teta * P * 40.0;
     }
     command.x_y.y = 0;
