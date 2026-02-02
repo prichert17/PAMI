@@ -1,3 +1,4 @@
+
 // Code pour l'ESP32 - Contrôle robot PAMI
 #include <HardwareSerial.h>
 
@@ -18,8 +19,8 @@ int16_t motor1_cmd = 0;
 int16_t motor2_cmd = 0;
 
 // Consignes position (mode auto)
-int16_t target_x = 0;
-int16_t target_y = 0;
+float target_x = 0.0f;
+float target_y = 0.0f;
 
 // ============================================
 // FONCTIONS D'ENVOI UART (rapide, sans delay)
@@ -46,21 +47,20 @@ void sendMotors(int16_t m1, int16_t m2) {
   sendMotor2(m2);
 }
 
-void sendPositionX(int16_t x) {
+void sendPositionX(float x) {
   char buf[16];
-  snprintf(buf, sizeof(buf), "X:%d", x);
+  snprintf(buf, sizeof(buf), "X:%.1f", x);
   sendToSTM32(buf);
 }
 
-void sendPositionY(int16_t y) {
+void sendPositionY(float y) {
   char buf[16];
-  snprintf(buf, sizeof(buf), "Y:%d", y);
+  snprintf(buf, sizeof(buf), "Y:%.1f", y);
   sendToSTM32(buf);
 }
 
-void sendPosition(int16_t x, int16_t y) {
+void sendPosition(float x, float y) {
   sendPositionX(x);
-  delay(5);
   sendPositionY(y);
 }
 
@@ -117,35 +117,74 @@ void setup() {
   
   // Démarrer en mode AUTO
   delay(100);
-  setModeAuto();
-  //setModeManuel();
+  
+  // ========== CHOISIR LE TEST ==========
+  #define TEST_MANUEL  // Commenter pour TEST_AUTO
+  // =====================================
+  
+  #ifdef TEST_MANUEL
+    setModeManuel();
+  #else
+    setModeAuto();
+  #endif
 }
 
 // ============================================
-// LOOP - Test 100 -> 1000 -> stop
+// LOOP
 // ============================================
 int step = 0;
 unsigned long timer = 0;
 
 void loop() {
   receiveFromSTM32();
+  
+#ifdef TEST_MANUEL
+  // === TEST MANUEL: 100 -> -100 -> stop ===
   if (step == 0 && millis() > 1000) {
-    Serial.println(">> Reset de la position");
     sendToSTM32("reset");
     step = 1;
     timer = millis();
   }
-  // Étape 1: Envoi 1000
-  if (step == 1 && millis() - timer > 2000) {
-    sendPosition(1000,1000);
-    Serial.println(">> Envoi X:1000 Y:1000");
+  else if (step == 1 && millis() - timer > 2000) {
+    sendMotors(100, 100);
+    Serial.println(">> M:100,100");
+    timer = millis();
+    step = 2;
+  }
+  else if (step == 2 && millis() - timer > 5000) {
+    sendMotors(-100, -100);
+    Serial.println(">> M:-100,-100");
     timer = millis();
     step = 3;
   }
-  // Étape 3: Stop après 15s
-  else if (step == 3 && millis() - timer > 15000) {
+  else if (step == 3 && millis() - timer > 5000) {
     stopMotors();
-    Serial.println(">> STOP");
     step = 4;
   }
+  
+#else
+  // === TEST AUTO: positions X,Y ===
+  if (step == 0 && millis() > 1000) {
+    sendToSTM32("reset");
+    step = 1;
+    timer = millis();
+  }
+  else if (step == 1 && millis() - timer > 2000) {
+    sendPosition(500.0f, 0.0f);
+    Serial.println(">> X:500 Y:0");
+    timer = millis();
+    step = 2;
+  }
+  else if (step == 2 && millis() - timer > 5000) {
+    sendPosition(500.0f, 500.0f);
+    Serial.println(">> X:500 Y:500");
+    timer = millis();
+    step = 3;
+  }
+  else if (step == 3 && millis() - timer > 5000) {
+    sendPosition(0.0f, 0.0f);
+    Serial.println(">> X:0 Y:0");
+    step = 4;
+  }
+#endif
 }
