@@ -61,6 +61,7 @@ void sendPositionY(float y) {
 
 void sendPosition(float x, float y) {
   sendPositionX(x);
+  delay(5);
   sendPositionY(y);
 }
 
@@ -119,7 +120,7 @@ void setup() {
   delay(100);
   
   // ========== CHOISIR LE TEST ==========
-  #define TEST_MANUEL  // Commenter pour TEST_AUTO
+  //#define TEST_MANUEL  // Commenter pour TEST_AUTO
   // =====================================
   
   #ifdef TEST_MANUEL
@@ -164,24 +165,24 @@ void loop() {
   
 #else
   // === TEST AUTO: positions X,Y ===
-  if (step == 0 && millis() > 1000) {
+  if (step == 0 && millis() > 500) {
     sendToSTM32("reset");
     step = 1;
     timer = millis();
   }
   else if (step == 1 && millis() - timer > 2000) {
-    sendPosition(500.0f, 0.0f);
-    Serial.println(">> X:500 Y:0");
+    sendPosition(1000.0f, 0.0f);
+    Serial.println(">> X:1000 Y:0");
     timer = millis();
     step = 2;
   }
-  else if (step == 2 && millis() - timer > 5000) {
-    sendPosition(500.0f, 500.0f);
-    Serial.println(">> X:500 Y:500");
+  else if (step == 2 && millis() - timer > 10000) {
+    sendPosition(1000.0f, 2000.0f);
+    Serial.println(">> X:1000 Y:2000");
     timer = millis();
     step = 3;
   }
-  else if (step == 3 && millis() - timer > 5000) {
+  else if (step == 3 && millis() - timer > 15000) {
     sendPosition(0.0f, 0.0f);
     Serial.println(">> X:0 Y:0");
     step = 4;
