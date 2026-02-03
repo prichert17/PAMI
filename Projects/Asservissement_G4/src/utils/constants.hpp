@@ -13,15 +13,13 @@ namespace CONSTANTS{
     
     inline constexpr mm WHEEL_BASE = 100.0;  // Distance entre les 2 roues motrices
 
-    inline constexpr uint16_t ENCODER_STEP_REV = 1200; 
+    inline constexpr uint16_t ENCODER_STEP_REV = 600; 
 
     inline constexpr double ODOMETRY_FREQ = 500.0;
 
     inline constexpr uint32_t PRINTF_BUFFER_SIZE = 512;
 
     inline constexpr uint8_t FILTER_SIZE = 50;
-
-    inline constexpr double ODOMETRY_CORRECTION_XY = 2.07;
 
     inline constexpr double ASSERV_FREQ = 100.0;
 

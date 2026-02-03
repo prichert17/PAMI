@@ -75,9 +75,9 @@ bool test_mode = true;
 
 // Moteurs utilisant la classe Wheel
 std::array<Wheel, 3> wheels = {
-    Wheel(1, 1200, 21.5f, 0.0f),     // Moteur 1
-    Wheel(2, 1200, 21.5f, 0.0f),   // Moteur 2
-    Wheel(3, 1200, 21.5f, 0.0f)      // Moteur 3 (réserve)
+    Wheel(1, 600, 21.5f, 0.0f),     // Moteur 1
+    Wheel(2, 600, 21.5f, 0.0f),   // Moteur 2
+    Wheel(3, 600, 21.5f, 0.0f)      // Moteur 3 (réserve)
 };
 
 // Odométrie et asservissement
