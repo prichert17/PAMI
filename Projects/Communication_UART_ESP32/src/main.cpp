@@ -22,6 +22,26 @@ int16_t motor2_cmd = 0;
 float target_x = 0.0f;
 float target_y = 0.0f;
 
+// Position actuelle lue du STM32
+float current_x = 0.0f;
+float current_y = 0.0f;
+
+// Liste de waypoints
+struct Point { float x; float y; };
+Point waypoints[] = {
+  {1000, 0},
+  {1000, 1000},
+  {0, 1000},
+  {0, 0}
+};
+const int NB_WAYPOINTS = sizeof(waypoints) / sizeof(waypoints[0]);
+int currentWaypoint = 0;
+
+// Tolérance et timing
+const float TOLERANCE = 50.0f;  // mm
+unsigned long reachedTime = 0;
+bool isNearTarget = false;
+
 // ============================================
 // FONCTIONS D'ENVOI UART (rapide, sans delay)
 // ============================================
@@ -93,9 +113,31 @@ void setLED(bool on) {
 // ============================================
 // RECEPTION DONNEES STM32
 // ============================================
+String rxBuffer = "";
+
+void parseSTM32Data(String& line) {
+  // Format: [MANUEL] PWM:0,0 ENC:x,x SPD:0,0 V:x || X:-3678 Y:0 Z:0
+  int xIdx = line.indexOf("X:");
+  int yIdx = line.indexOf("Y:");
+  if (xIdx >= 0 && yIdx >= 0) {
+    current_x = line.substring(xIdx + 2, yIdx).toFloat();
+    int zIdx = line.indexOf("Z:");
+    if (zIdx >= 0) {
+      current_y = line.substring(yIdx + 2, zIdx).toFloat();
+    }
+  }
+}
+
 void receiveFromSTM32() {
   while (Serial2.available()) {
-    Serial.write(Serial2.read());
+    char c = Serial2.read();
+    Serial.write(c);
+    if (c == '\n') {
+      parseSTM32Data(rxBuffer);
+      rxBuffer = "";
+    } else if (c != '\r') {
+      rxBuffer += c;
+    }
   }
 }
 
@@ -136,11 +178,29 @@ void setup() {
 int step = 0;
 unsigned long timer = 0;
 
+void sendNextWaypoint() {
+  if (currentWaypoint < NB_WAYPOINTS) {
+    target_x = waypoints[currentWaypoint].x;
+    target_y = waypoints[currentWaypoint].y;
+    sendPosition(target_x, target_y);
+    Serial.printf(">> Waypoint %d: X:%.0f Y:%.0f\n", currentWaypoint, target_x, target_y);
+    isNearTarget = false;
+  } else {
+    Serial.println(">> Parcours terminé");
+  }
+}
+
+bool checkPosition() {
+  float dx = current_x - target_x;
+  float dy = current_y - target_y;
+  return (abs(dx) < TOLERANCE && abs(dy) < TOLERANCE);
+}
+
 void loop() {
   receiveFromSTM32();
   
 #ifdef TEST_MANUEL
-  // === TEST MANUEL: 100 -> -100 -> stop ===
+  // === TEST MANUEL ===
   if (step == 0 && millis() > 1000) {
     sendToSTM32("reset");
     step = 1;
@@ -148,44 +208,39 @@ void loop() {
   }
   else if (step == 1 && millis() - timer > 2000) {
     sendMotors(100, 100);
-    Serial.println(">> M:100,100");
     timer = millis();
     step = 2;
   }
   else if (step == 2 && millis() - timer > 5000) {
-    sendMotors(-100, -100);
-    Serial.println(">> M:-100,-100");
-    timer = millis();
-    step = 3;
-  }
-  else if (step == 3 && millis() - timer > 5000) {
     stopMotors();
-    step = 4;
+    step = 3;
   }
   
 #else
-  // === TEST AUTO: positions X,Y ===
+  // === MODE AUTO: parcours waypoints ===
   if (step == 0 && millis() > 500) {
     sendToSTM32("reset");
     step = 1;
     timer = millis();
   }
   else if (step == 1 && millis() - timer > 2000) {
-    sendPosition(1000.0f, 0.0f);
-    Serial.println(">> X:1000 Y:0");
-    timer = millis();
+    sendNextWaypoint();
     step = 2;
   }
-  else if (step == 2 && millis() - timer > 10000) {
-    sendPosition(1000.0f, 2000.0f);
-    Serial.println(">> X:1000 Y:2000");
-    timer = millis();
-    step = 3;
-  }
-  else if (step == 3 && millis() - timer > 15000) {
-    sendPosition(0.0f, 0.0f);
-    Serial.println(">> X:0 Y:0");
-    step = 4;
+  else if (step == 2 && currentWaypoint < NB_WAYPOINTS) {
+    if (checkPosition()) {
+      if (!isNearTarget) {
+        isNearTarget = true;
+        reachedTime = millis();
+        Serial.printf(">> Position atteinte (X:%.0f Y:%.0f)\n", current_x, current_y);
+      }
+      else if (millis() - reachedTime > 50) {
+        currentWaypoint++;
+        sendNextWaypoint();
+      }
+    } else {
+      isNearTarget = false;
+    }
   }
 #endif
 }

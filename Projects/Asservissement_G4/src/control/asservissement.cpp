@@ -145,10 +145,10 @@ void Asserv_Position::update_asserv(){
     if (in_rotation_mode) {
         double cmd_rot = error_P.teta * P + error_I.teta * I + error_D.teta * D;
         // Boost initial pour vaincre l'inertie
-        double min_cmd = 80.0;
+        double min_cmd = 100.0;
         if (fabs(cmd_rot) < min_cmd && fabs(angle_error) > 0.05)
             cmd_rot = (cmd_rot > 0) ? min_cmd : -min_cmd;
-        command.teta = cmd_rot;
+        command.teta = cmd_rot * 2;
         command.x_y.x = 0;
         // Reset du boost en ligne droite dès qu'on entre en rotation
         straight_line_boost = 0.0;

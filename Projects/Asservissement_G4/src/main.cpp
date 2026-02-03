@@ -152,7 +152,7 @@ int main(void)
     HAL_TIM_Base_Start_IT(&htim17);
 
     // Configuration PID pour l'asservissement en position
-    asserv.set_PID(5, 15, 15.0);
+    asserv.set_PID(10, 15, 15.0);
 
     // Message de démarrage
     serial.send("\r\n=== PAMI STM32 ===\r\n");
