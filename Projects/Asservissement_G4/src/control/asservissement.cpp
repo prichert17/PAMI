@@ -107,7 +107,7 @@ void Asserv_Position::update_asserv(){
     double dist_to_target = sqrt(dx*dx + dy*dy);
 
     // Arrivé à destination -> stop
-    if (dist_to_target < 20.0) {
+    if (dist_to_target < 5.0) {  // 5mm de précision (était 20mm)
         command = Vector2DAndRotation(0, 0, 0);
         set_motors_power_relative(command);
         return;
@@ -148,7 +148,7 @@ void Asserv_Position::update_asserv(){
         double min_cmd = 100.0;
         if (fabs(cmd_rot) < min_cmd && fabs(angle_error) > 0.05)
             cmd_rot = (cmd_rot > 0) ? min_cmd : -min_cmd;
-        command.teta = cmd_rot * 2;
+        command.teta = cmd_rot * 3;
         command.x_y.x = 0;
         // Reset du boost en ligne droite dès qu'on entre en rotation
         straight_line_boost = 0.0;
@@ -166,14 +166,18 @@ void Asserv_Position::update_asserv(){
             straight_line_boost += boost_rate;
             if (straight_line_boost > max_boost) straight_line_boost = max_boost;
         }*/
-        command.x_y.x = error_P.x_y.x * P + straight_line_boost;
+        double slow_down_distance = 100.0;  // Ralentir à partir de 100mm
+        double speed_factor = (dist_to_target < slow_down_distance) 
+            ? (dist_to_target / slow_down_distance) 
+            : 1.0;
+        command.x_y.x = (error_P.x_y.x * P + straight_line_boost) * speed_factor;
         command.teta = error_P.teta * P * 40.0;
     }
     command.x_y.y = 0;
 
     // Limite seulement le linéaire, pas l'angle
-    if (command.x_y.x > 500.0) command.x_y.x = 500.0;
-    if (command.x_y.x < -500.0) command.x_y.x = -500.0;
+    if (command.x_y.x > 700.0) command.x_y.x = 700.0;
+    if (command.x_y.x < -700.0) command.x_y.x = -700.0;
 
     // Rampe d'accélération (limite variation par cycle)
     static Vector2DAndRotation last_cmd(0, 0, 0);
