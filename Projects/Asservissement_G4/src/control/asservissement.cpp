@@ -195,6 +195,8 @@ void Asserv_Position::stop_asserv(){
 
 void Asserv_Position::set_target_position(Vector2DAndRotation target_position){
     this->target_position = target_position;
+    // Reset de l'intégrateur pour éviter un biais vers l'ancienne direction
+    error_I = Vector2DAndRotation(0, 0, 0);
 }
 
 void Asserv_Position::set_motors_power_relative(Vector2DAndRotation power){
