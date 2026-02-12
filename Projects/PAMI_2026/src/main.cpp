@@ -1,126 +1,74 @@
+/**
+ * PAMI ESP32 - Main Entry Point
+ * Architecture: FreeRTOS avec séparation par Tâches
+ */
+
 #include <Arduino.h>
-#include <TOF_2.h>
-#include <asser_position.h>
-#include <SoftTimers.h>
-#include "BluetoothSerial.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
-BluetoothSerial SerialBT;
-SoftTimer timer_main;
-SoftTimer toggle_timer;
-const long interval = 1500;
-extern VL53L5CX_ResultsData measurementData;
-#define TIRETTE 12
-#define STRAT   13
+// Inclusion des configurations et définitions partagées
+#include "config.h"
+#include "types.h"
+#include "tasks.h" // Contient les prototypes des fonctions Task_...
+#include "pami_com.h" // Prototypes de fonctions de communication avec STM32
+#include "tofs.h" // Prototypes de fonctions liées aux capteurs ToF
 
-bool couleur;  //on dit que true = jaune et false = bleu
+// --- VARIABLES GLOBALES SYSTÈME ---
+// Définition du Mutex (déclaré extern dans types.h)
+SemaphoreHandle_t xPoseMutex = NULL;
 
-extern bool presence_obstacle;
-
-extern Terrain ter;
-
-
-enum State {RUN,STOP,STOP_EMERGENCE,CONTOURNEMENT}; //on définit les états possibles du robot
-State current_state = RUN;
-int numberOfCoordinates = 0;
-
-
-
-void setup(){
-    
+void setup() {
+    // 1. Initialisation Debug
     Serial.begin(115200);
-    SerialBT.begin("PAMI_BT");    // nom qui apparaîtra sur Windows
-    pinMode(STRAT, INPUT_PULLUP); // switch pour choisir la couleur
-    Serial.print("Strat = ");
-    Serial.println(digitalRead(STRAT));
-    SerialBT.print("Strat = ");
-    SerialBT.println(digitalRead(STRAT));
-    pinMode(TIRETTE, INPUT_PULLUP);
-    //while (digitalRead(TIRETTE) == HIGH) {    //on attend que la tirette soit en position 0
-      //Serial.print("TIRETTE = ");
-      //Serial.println(digitalRead(TIRETTE));
-      //delay(200); // Limite l'affichage pour éviter de saturer la console
-    //}
-    if (digitalRead(STRAT) == HIGH) { //si le switch est sur 1, on dit que le terrain est jaune
-      couleur = true; //on dit que le terrain est jaune
-    }else{ //si le switch est sur 0, on dit que le terrain est bleu
-      couleur = false; //on dit que le terrain est bleu
-    }
-    (digitalRead(STRAT) == HIGH) ? ter.jaune() : ter.bleu(); //on dit que 1 = jaune et 0 = bleu
-    //fonction qui rajoute les coordonnées de l'estrade aux obstacles
+    // Petit délai de sécurité pour que le port série s'ouvre bien
+    vTaskDelay(500 / portTICK_PERIOD_MS); 
+    Serial.println("\n--- PAMI ESP32: System Booting ---");
 
-    
-    if (couleur == true){
-      Serial.println("Terrain Jaune");
-      SerialBT.println("Terrain Jaune");
-      ter.jaune();
-    }else if (couleur == false){
-      Serial.println("Terrain Bleu");
-      SerialBT.println("Terrain Bleu");
-      ter.bleu();
+    // 2. Initialisation des Pins Globaux (si nécessaire ici)
+    // Note : Les pins spécifiques sont init dans les setups de chaque tâche,
+    // mais on peut init les inputs communs ici.
+    pinMode(PIN_TIRETTE, INPUT_PULLUP);
+
+    // 3. Création des Objets de Synchronisation
+    xPoseMutex = xSemaphoreCreateMutex();
+    if (xPoseMutex == NULL) {
+        Serial.println("!!! ERREUR CRITIQUE : Mutex creation failed !!!");
+        while(1); // On bloque tout si pas de mémoire
     }
-    tof_setup_spark(); //set_up de TOF et ultrasons 
-    asser_position_setup(); // set _up de l'asservissement de position
-      
-    numberOfCoordinates = ter.getNumberOfCoordinates(); //on récupère le nombre de coordonnées (utile dans l'évitement d'obstacles)
-    timer_main.setTimeOutTime(100000); // on initialise le timer à 100s
+
+    // 4. Création des Tâches (Multitasking)
     
-    timer_main.reset(); // le timer commence ici (enleve pas cette ligne)
-    toggle_timer.reset();
-    
-  }
+    // Tâche COMMS (Priorité 5 - HAUTE) -> Core 1
+    // Doit être réactive pour ne pas rater de caractères UART
+    xTaskCreatePinnedToCore(
+        Task_Comms,   "Comms",    4096, NULL, 5, NULL, 1
+    );
+
+    // Tâche STRATEGY (Priorité 4 - MOYENNE) -> Core 1
+    // Le cerveau du robot, tourne sur le même coeur que la Comms pour accès rapide cache
+    xTaskCreatePinnedToCore(
+        Task_Strategy,"Strategy", 4096, NULL, 4, NULL, 1
+    );
+
+    // Tâche IHM (Priorité 1 - BASSE) -> Core 0
+    // Gère les servos et LEDs. Core 0 est moins chargé (gère le Wifi s'il y en a)
+    xTaskCreatePinnedToCore(
+        Task_IHM,     "HMI",      2048, NULL, 1, NULL, 0
+    );
+
+    // Tâche TOFS (Priorité 2 - MOYENNE/BASSE) -> Core 0
+    // Lecture I2C (peut être bloquante ou lente), on la sépare du Core 1
+    xTaskCreatePinnedToCore(
+        Task_Tofs,    "ToFs",     4096, NULL, 2, NULL, 0
+    );
+
+    Serial.println("--- PAMI ESP32: RTOS Scheduler Started ---");
+}
 
 void loop() {
-    
-    if(timer_main.getElapsedTime() > 3500){ //après 85 secondes, on commence notre strategie
-      tof_loop_spark();
-
-      current_state = (timer_main.hasTimedOut())? STOP :current_state ; //si on arrive vers 100s on arrête tout, sinon current_state reste inchangé      
-      switch (current_state){
-          case RUN: {
-            asser_position_loop(true);
-            bool libre = ter.arret_urgence();
-            current_state  = (libre)? STOP_EMERGENCE:RUN;             
-            
-            if (presence_obstacle) {
-              current_state = CONTOURNEMENT;
-            }
-
-            break;
-          }
-          case (STOP):{
-            asser_position_loop(false);
-
-          break;
-          }
-          case (CONTOURNEMENT):{    //on met temporairement le robot en pause avant d'avoir trouvé un nouveau chemin (fonction inutilisée, tout est fait dans le code du tof)
-            asser_position_loop(false);
-            //Serial.println("CONTOURNEMENT");
-
-            if (!presence_obstacle) {
-              current_state = RUN;
-            }
-
-          break;
-          }
-          case (STOP_EMERGENCE):
-          {
-            asser_position_loop(false);
-            //Serial.println("STOP EMERGENCE");
-            if (!ter.arret_urgence()) {     //si l'obstacle n'est plus là, on retourne à l'état RUN
-              current_state = RUN; break; 
-            }   
-          
-            break;
-          }
-          default:
-          {
-
-   
-          break; 
-          }
-        }
-  }
-  
-  
-  
+    // Dans FreeRTOS avec Arduino, le loop tourne dans une tâche de priorité 1.
+    // Comme nous n'en avons pas besoin, on supprime cette tâche pour libérer la RAM.
+    vTaskDelete(NULL);
 }

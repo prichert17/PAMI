@@ -1,0 +1,108 @@
+#ifndef PAMI_COM_H
+#define PAMI_COM_H
+
+#include <HardwareSerial.h>
+
+// ============================================
+// CONFIGURATION
+// ============================================
+#define RXD2 16
+#define TXD2 17
+#define SERIAL_BAUD 115200
+
+// ============================================
+// VARIABLES GLOBALES
+// ============================================
+extern bool mode_auto;
+extern float target_x, target_y;
+extern float current_x, current_y;
+
+// ============================================
+// INITIALISATION
+// ============================================
+inline void initPAMI() {
+  Serial.begin(SERIAL_BAUD);
+  Serial2.begin(SERIAL_BAUD, SERIAL_8N1, RXD2, TXD2);
+  Serial.println("\n=== PAMI ESP32 Control ===\n");
+}
+
+// ============================================
+// FONCTIONS D'ENVOI UART
+// ============================================
+inline void sendToSTM32(const char* cmd) {
+  Serial2.println(cmd);
+}
+
+inline void sendMotors(int16_t m1, int16_t m2) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "M1:%d", m1);
+  Serial2.println(buf);
+  delay(5);
+  snprintf(buf, sizeof(buf), "M2:%d", m2);
+  Serial2.println(buf);
+}
+
+inline void sendPosition(float x, float y) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "X:%.1f", x);
+  Serial2.println(buf);
+  delay(5);
+  snprintf(buf, sizeof(buf), "Y:%.1f", y);
+  Serial2.println(buf);
+}
+
+inline void setModeManuel() {
+  mode_auto = false;
+  sendToSTM32("mode manuel");
+}
+
+inline void setModeAuto() {
+  mode_auto = true;
+  sendToSTM32("mode auto");
+}
+
+inline void stopMotors() {
+  sendToSTM32("stop");
+}
+
+inline void resetSTM32() {
+  sendToSTM32("reset");
+}
+
+// ============================================
+// RECEPTION DONNEES STM32
+// ============================================
+inline void parseSTM32Data(String& line) {
+  int xIdx = line.indexOf("X:");
+  int yIdx = line.indexOf("Y:");
+  if (xIdx >= 0 && yIdx >= 0) {
+    current_x = line.substring(xIdx + 2, yIdx).toFloat();
+    int zIdx = line.indexOf("Z:");
+    if (zIdx >= 0) {
+      current_y = line.substring(yIdx + 2, zIdx).toFloat();
+    }
+  }
+}
+
+inline void receiveFromSTM32() {
+  static String rxBuffer = "";
+  while (Serial2.available()) {
+    char c = Serial2.read();
+    Serial.write(c);
+    if (c == '\n') {
+      parseSTM32Data(rxBuffer);
+      rxBuffer = "";
+    } else if (c != '\r') {
+      rxBuffer += c;
+    }
+  }
+}
+
+// ============================================
+// UTILITAIRES NAVIGATION
+// ============================================
+inline bool checkPosition(float tolerance = 50.0f) {
+  return (abs(current_x - target_x) < tolerance && abs(current_y - target_y) < tolerance);
+}
+
+#endif
