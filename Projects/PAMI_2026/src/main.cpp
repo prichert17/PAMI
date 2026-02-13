@@ -19,6 +19,11 @@
 // Définition du Mutex (déclaré extern dans types.h)
 SemaphoreHandle_t xPoseMutex = NULL;
 
+// Variables globales de communication (déclarées extern dans pami_com.h)
+bool mode_auto = false;
+float target_x = 0.0f, target_y = 0.0f;
+float current_x = 0.0f, current_y = 0.0f, current_theta = 0.0f;
+
 void setup() {
     // 1. Initialisation Debug
     Serial.begin(115200);

@@ -15,7 +15,7 @@
 // ============================================
 extern bool mode_auto;
 extern float target_x, target_y;
-extern float current_x, current_y;
+extern float current_x, current_y, current_theta;
 
 // ============================================
 // INITIALISATION
@@ -73,13 +73,17 @@ inline void resetSTM32() {
 // RECEPTION DONNEES STM32
 // ============================================
 inline void parseSTM32Data(String& line) {
+  // Format: "X:123.4,Y:567.8,Z:1.57"
   int xIdx = line.indexOf("X:");
   int yIdx = line.indexOf("Y:");
+  int zIdx = line.indexOf("Z:");
   if (xIdx >= 0 && yIdx >= 0) {
     current_x = line.substring(xIdx + 2, yIdx).toFloat();
-    int zIdx = line.indexOf("Z:");
     if (zIdx >= 0) {
       current_y = line.substring(yIdx + 2, zIdx).toFloat();
+      current_theta = line.substring(zIdx + 2).toFloat();
+    } else {
+      current_y = line.substring(yIdx + 2).toFloat();
     }
   }
 }

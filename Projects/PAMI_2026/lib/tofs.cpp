@@ -13,10 +13,9 @@ const byte targetAddresses[3] = {0x30, 0x31, 0x32};
 VL53L5CX_ResultsData measurementData; 
 
 /*Tableaux pour stocker les distances des tofs*/
-
-float distances_tof1[8];    //mode 8x8 des tofs, et on ne prends qu'une seule ligne
-float distances_tof2[8]; 
-float distances_tof3[8]; 
+// Ordre des capteurs : [0]=Centre, [1]=Gauche, [2]=Droite
+// On stocke 16 zones (2 lignes centrales de la matrice 8x8)
+float distances_tof[3][8]; 
 
 void setup_tof() {
   delay(1000);
@@ -77,12 +76,12 @@ void loop_tof() {
         int minDistance = 4000;
         int validZones = 0;
 
-        // Parcourir les 64 zones (8x8)
-        for(int j = 32; j < 48; j++){   //une seule ligne
+        // Parcourir les 16 zones centrales (lignes 4 et 5 de la matrice 8x8)
+        for(int j = 32; j < 40; j++){
             // Statut 5 ou 9 = Mesure valide
             if(measurementData.target_status[j] == 5 || measurementData.target_status[j] == 9){
-              distances_tof1[j] = measurementData.distance_mm[j]; 
-              
+              distances_tof[i][j - 32] = measurementData.distance_mm[j]; 
+
               int dist = measurementData.distance_mm[j];
                 if(dist < minDistance && dist > 0) {
                     minDistance = dist;
@@ -101,4 +100,58 @@ void loop_tof() {
   }
   Serial.println(); // Nouvelle ligne après avoir checké les 3
   delay(50); // Petit délai pour ne pas spammer le port série (à retirer en prod)
+}
+
+// Position des coordonnées robot (mises à jour depuis pami_com.h)
+extern float current_x, current_y, current_theta;
+
+// Offsets des TOF par rapport au centre du robot (en mm)
+// [capteur][0]=offset_avant, [capteur][1]=offset_lateral (+ = gauche, - = droite)
+const float tofOffsets[3][2] = {
+  {20.0f,   0.0f},   // Centre : 2cm devant
+  {15.0f,  20.0f},   // Gauche : 1.5cm devant, 2cm à gauche
+  {15.0f, -20.0f}    // Droite : 1.5cm devant, 2cm à droite
+};
+
+// Angle des capteurs par rapport à l'avant du robot (en radians)
+// Centre=0°, Gauche=+55.5°, Droite=-55.5°
+const float sensorAngles[3] = {0.0f, 0.9687f, -0.9687f}; // 55.5° = 55.5*PI/180
+
+// FOV de chaque capteur (en radians) : Centre=45°, Gauche/Droite=60°
+const float sensorFOV[3] = {0.7854f, 1.0472f, 1.0472f}; // 45°, 60°, 60°
+
+// Stockage des obstacles détectés [capteur][zone]
+float obstacleX[3][8];
+float obstacleY[3][8];
+
+void calcule_points_tof() {
+  float theta = current_theta;
+  float cosTheta = cos(theta);
+  float sinTheta = sin(theta);
+  
+  for (int sensor = 0; sensor < 3; sensor++) {
+    // Position du capteur dans le référentiel absolu
+    float tofX = current_x + tofOffsets[sensor][0] * cosTheta - tofOffsets[sensor][1] * sinTheta;
+    float tofY = current_y + tofOffsets[sensor][0] * sinTheta + tofOffsets[sensor][1] * cosTheta;
+    
+    // Calcul des angles de zone selon le FOV du capteur
+    float zoneStep = sensorFOV[sensor] / 8.0f;
+    float zoneStart = -sensorFOV[sensor] / 2.0f + zoneStep / 2.0f;
+    
+    for (int zone = 0; zone < 8; zone++) {
+      float dist = distances_tof[sensor][zone];
+      if (dist > 0) {
+        // Angle total = robot + capteur + zone
+        float zoneAngle = zoneStart + zone * zoneStep;
+        float totalAngle = theta + sensorAngles[sensor] + zoneAngle;
+        
+        // Coordonnées de l'obstacle
+        obstacleX[sensor][zone] = tofX + dist * cos(totalAngle);
+        obstacleY[sensor][zone] = tofY + dist * sin(totalAngle);
+      } else {
+        obstacleX[sensor][zone] = 0;
+        obstacleY[sensor][zone] = 0;
+      }
+    }
+  }
 }

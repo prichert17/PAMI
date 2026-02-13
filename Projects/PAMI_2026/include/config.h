@@ -21,10 +21,10 @@
 #define PIN_SERVO_2   15
 #define PIN_SERVO_3   27
 #define PIN_LED_DATA  14
-#define PIN_MOT_DIR1  32 // Moteur direct 1
-#define PIN_MOT_DIR2  33
-#define PIN_MOT_DIR1  25 // Moteur direct 
-#define PIN_MOT_DIR2  26
+#define PIN_MOT1_DIR1  32 // Moteur direct 1
+#define PIN_MOT1_DIR2  33
+#define PIN_MOT2_DIR1  25 // Moteur direct 
+#define PIN_MOT2_DIR2  26
 
 // INPUTS
 #define PIN_TIRETTE   36 // À définir (Pull-up interne requis)
@@ -33,7 +33,7 @@
 #define PIN_SW_MODE   36 // "UP" - Souvent VP/VN (Input Only)
 
 // --- CONSTANTS ---
-#define MATCH_DURATION_MS 99000 // 95 secondes (marge sécu)
+#define MATCH_DURATION_MS 99000 // 99 secondes (marge sécu)
 #define BATTERY_MIN_V     3.0f  // Seuil alerte (par cellule, ou total à adapter)
 #define BATTERY_TIMEOUT   1000  // Temps min sous le seuil pour déclencher l'erreur
 

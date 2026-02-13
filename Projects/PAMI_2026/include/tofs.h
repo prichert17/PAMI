@@ -7,12 +7,16 @@
 
 void setup_tof(); 
 void loop_tof();
+void calcule_points_tof();  // Convertit distances_tof en coordonnées obstacles
 
-/*Classe pour stocker les coordonnées des obstacles*/
-class obstacle {
-    public:
+// Tableau des distances TOF : [capteur][zone]
+// Capteurs : [0]=Centre, [1]=Gauche, [2]=Droite
+// Zones : 8 zones centrales de la matrice 8x8
+extern float distances_tof[3][8];
 
-};
+// Coordonnées des obstacles détectés [capteur][zone] (en mm)
+extern float obstacleX[3][8];
+extern float obstacleY[3][8];
 
 struct Coordinate {
     int16_t x;
