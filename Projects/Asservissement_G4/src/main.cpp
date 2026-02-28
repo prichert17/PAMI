@@ -353,7 +353,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         int val = 0;
                         sscanf(&p_cmd[3], "%d", &val); // Lecture depuis p_cmd
                         if (val >= -1000 && val <= 1000) {
-                            wheels[0].set_pwm(val);
+                            wheels[0].set_pwm(-val);
                             serial.printf(">> M1=%d\r\n", val);
                         }
                     } else {
