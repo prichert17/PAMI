@@ -207,11 +207,8 @@ void Asserv_Position::set_motors_power_relative(Vector2DAndRotation power){
     double cmd_linear = power.x_y.x;
     double cmd_rot    = power.teta;
 
-    // Roue 0 = Gauche, Roue 1 = Droite
-    // Pour tourner à droite (teta négatif), gauche doit aller plus vite
-    // Pour tourner à gauche (teta positif), droite doit aller plus vite
-    double speed_left  = cmd_linear + cmd_rot;  // Inversé: + au lieu de -
-    double speed_right = cmd_linear - cmd_rot;  // Inversé: - au lieu de +
+    double speed_left  = cmd_linear - cmd_rot;
+    double speed_right = cmd_linear + cmd_rot;
 
     (*wheels)[0].set_motor_power((int32_t)speed_left);
     (*wheels)[1].set_motor_power((int32_t)speed_right);
