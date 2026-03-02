@@ -1,4 +1,3 @@
-
 // Code pour l'ESP32 - Contrôle robot PAMI par manette
 #include <Arduino.h>
 #include "pami_com.h"
@@ -14,9 +13,14 @@ float current_x = 0.0f, current_y = 0.0f;
 // Manette Bluetooth
 ControllerPtr myControllers[BP32_MAX_GAMEPADS];
 
-// Paramètres
+// Paramètres de pilotage
 const int JOYSTICK_DEADZONE = 50;
 const int MAX_MOTOR_SPEED = 1000;
+
+// Variables pour l'accélération progressive (Anti-Drop Tension)
+float current_motor1 = 0;
+float current_motor2 = 0;
+const float MAX_ACCEL_STEP = 40.0;
 
 // ============================================
 // CALLBACKS MANETTE
@@ -48,6 +52,8 @@ void setup() {
   initPAMI();
   BP32.setup(&onConnectedController, &onDisconnectedController);
   setModeManuel();
+  delay(5);
+  resetSTM32();
   Serial.println("En attente de manette...");
 }
 
@@ -77,7 +83,8 @@ void loop() {
         if (!mode_auto) {
           mode_auto = true;
           setModeAuto();
-          sendPosition(0.0f, 0.0f); // Envoie la commande pour rentrer à (0,0)
+          delay(5);
+          sendPosition(0.0f, 0.0f);
           Serial.println(">> MODE AUTO : Retour à la base (0,0) !");
         }
       }
@@ -85,7 +92,6 @@ void loop() {
       // ---------------------------------------------------------
       // 2. REPRISE MANUELLE & PILOTAGE
       // ---------------------------------------------------------
-      // Si on touche aux joysticks, on annule l'auto et on repasse en manuel
       if (ly != 0 || rx != 0) {
         if (mode_auto) {
           mode_auto = false;
@@ -94,31 +100,47 @@ void loop() {
         }
       }
 
-      // On n'envoie les commandes moteurs QUE si on est en mode manuel
       if (!mode_auto) {
-        // --- GESTION DE L'ACCÉLÉRATION (GÂCHETTE DROITE) ---
-        int current_max_speed = 400; 
+        // --- 1. GÂCHETTE PROPORTIONNELLE ---
+        int trigger_val = ctl->throttle();
+        float current_max_speed = map(trigger_val, 0, 1023, 400, MAX_MOTOR_SPEED);
+
+        // --- 2. COURBES ET PRIORITÉ À LA DIRECTION ---
+        float norm_ly = (float)ly / 512.0f;
+        float norm_rx = (float)rx / 512.0f;
         
-        // ctl->throttle() lit la gâchette droite R2/RT (de 0 à 1023)
-        if (ctl->throttle() > 50) { 
-            current_max_speed = MAX_MOTOR_SPEED; // Passe à 800
+        norm_ly = norm_ly * norm_ly * norm_ly;
+        norm_rx = norm_rx * norm_rx * norm_rx;
+
+        // LA MAGIE EST ICI : Plus on tourne fort, plus on réduit la force d'avancement pure.
+        // Le "0.7" détermine l'agressivité du virage (0.0 = roue intérieure arrêtée, 1.0 = marche arrière violente)
+        float adjusted_ly = norm_ly * (1.0 - abs(norm_rx) * 0.7);
+
+        // --- CALCUL CIBLE (Arcade Drive) ---
+        float target_m1 = (norm_rx + adjusted_ly) * current_max_speed;
+        float target_m2 = (norm_rx - adjusted_ly) * current_max_speed;
+
+        target_m1 = constrain(target_m1, -current_max_speed, current_max_speed);
+        target_m2 = constrain(target_m2, -current_max_speed, current_max_speed);
+
+        // --- 3. RAMPE D'ACCÉLÉRATION (Anti-Voltage Drop) ---
+        if (target_m1 > current_motor1) {
+          current_motor1 = min((float)target_m1, current_motor1 + MAX_ACCEL_STEP);
+        } else {
+          current_motor1 = max((float)target_m1, current_motor1 - MAX_ACCEL_STEP);
         }
 
-        // --- CALCUL DES MOTEURS ---
-        int16_t mix_m1 = rx + ly; 
-        int16_t mix_m2 = rx - ly; 
+        if (target_m2 > current_motor2) {
+          current_motor2 = min((float)target_m2, current_motor2 + MAX_ACCEL_STEP);
+        } else {
+          current_motor2 = max((float)target_m2, current_motor2 - MAX_ACCEL_STEP);
+        }
 
-        mix_m1 = constrain(mix_m1, -512, 512);
-        mix_m2 = constrain(mix_m2, -512, 512);
-
-        int16_t motor1 = map(mix_m1, -512, 512, -current_max_speed, current_max_speed);
-        int16_t motor2 = map(mix_m2, -512, 512, -current_max_speed, current_max_speed);
-
-        sendMotors(motor1, motor2);
+        // Envoi à la STM32
+        sendMotors((int16_t)current_motor1, (int16_t)current_motor2);
       }
     }
   }
   
   delay(20);  // ~50Hz
 }
-

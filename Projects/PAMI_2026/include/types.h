@@ -5,7 +5,7 @@
 #include <freertos/semphr.h>
 
 // Enums
-enum RobotState { STATE_WAIT, STATE_GAME, STATE_END, STATE_MANUAL, STATE_ERROR };
+enum RobotState { STATE_WAIT, STATE_DELAY, STATE_GAME, STATE_END, STATE_MANUAL, STATE_ERROR };
 enum TeamColor { COLOR_BLUE, COLOR_YELLOW };
 
 // Structures

@@ -12,6 +12,8 @@ extern SemaphoreHandle_t xPoseMutex;
 
 static RobotState state = STATE_WAIT;
 static unsigned long matchStartTime = 0;
+static unsigned long tiretteTime = 0;
+static const unsigned long PAMI_DELAY_MS = 85000; // 85s avant départ PAMI
 
 void Task_Strategy(void *pvParameters) {
     Serial.println("[STRATEGY] Démarré");
@@ -21,6 +23,15 @@ void Task_Strategy(void *pvParameters) {
             case STATE_WAIT:
                 // Attente tirette
                 if (digitalRead(PIN_TIRETTE) == LOW) {
+                    tiretteTime = millis();
+                    state = STATE_DELAY;
+                    Serial.println("[STRATEGY] Tirette! Attente 85s...");
+                }
+                break;
+
+            case STATE_DELAY:
+                // Attente 85s avant départ
+                if ((millis() - tiretteTime) >= PAMI_DELAY_MS) {
                     state = STATE_GAME;
                     matchStartTime = millis();
                     mode_auto = true;

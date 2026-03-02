@@ -354,7 +354,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         sscanf(&p_cmd[3], "%d", &val); // Lecture depuis p_cmd
                         if (val >= -1000 && val <= 1000) {
                             wheels[0].set_pwm(-val);
-                            serial.printf(">> M1=%d\r\n", val);
+                            //serial.printf(">> M1=%d\r\n", val);
                         }
                     } else {
                         serial.send(">> Err: mode AUTO\r\n");
@@ -367,7 +367,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         sscanf(&p_cmd[3], "%d", &val);
                         if (val >= -1000 && val <= 1000) {
                             wheels[1].set_pwm(val);
-                            serial.printf(">> M2=%d\r\n", val);
+                            //serial.printf(">> M2=%d\r\n", val);
                         }
                     } else {
                         serial.send(">> Err: mode AUTO\r\n");
