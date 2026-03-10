@@ -16,14 +16,14 @@
 #define PIN_TOF2_LPN  23
 #define PIN_TOF3_LPN  18
 
-// ACTUATORS
+// Actionneurs
 #define PIN_SERVO_1   19
 #define PIN_SERVO_2   15
 #define PIN_SERVO_3   27
 #define PIN_LED_DATA  14
 #define PIN_MOT1_DIR1  32 // Moteur direct 1
 #define PIN_MOT1_DIR2  33
-#define PIN_MOT2_DIR1  25 // Moteur direct 
+#define PIN_MOT2_DIR1  25 // Moteur direct 2
 #define PIN_MOT2_DIR2  26
 
 // INPUTS

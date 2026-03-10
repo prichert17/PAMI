@@ -24,6 +24,11 @@ bool mode_auto = false;
 float target_x = 0.0f, target_y = 0.0f;
 float current_x = 0.0f, current_y = 0.0f, current_theta = 0.0f;
 
+// Variables globales d'état (déclarées extern dans types.h)
+RobotState state = STATE_WAIT;
+TeamColor teamColor = COLOR_BLUE;
+bool lowBattery = false;
+
 void setup() {
     // 1. Initialisation Debug
     Serial.begin(115200);
@@ -35,6 +40,11 @@ void setup() {
     // Note : Les pins spécifiques sont init dans les setups de chaque tâche,
     // mais on peut init les inputs communs ici.
     pinMode(PIN_TIRETTE, INPUT_PULLUP);
+    pinMode(PIN_SW_COLOR, INPUT);
+    pinMode(PIN_SW_DEBUG, INPUT);
+
+    // Lecture couleur d'équipe au démarrage
+    teamColor = (digitalRead(PIN_SW_COLOR) == LOW) ? COLOR_BLUE : COLOR_YELLOW;
 
     // 3. Création des Objets de Synchronisation
     xPoseMutex = xSemaphoreCreateMutex();
