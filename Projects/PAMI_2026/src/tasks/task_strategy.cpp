@@ -23,8 +23,12 @@ void Task_Strategy(void *pvParameters) {
     initServos();
     initMotors();
 
-    // Vérifier si mode debug activé au démarrage
-    if (digitalRead(PIN_SW_DEBUG) == LOW) {
+    // Vérifier le mode au démarrage (priorité: manette > debug > normal)
+    if (digitalRead(PIN_SW_MODE) == LOW) {
+        state = STATE_MANUAL;
+        Serial.println("[STRATEGY] Mode MANETTE activé");
+    }
+    else if (digitalRead(PIN_SW_DEBUG) == LOW) {
         state = STATE_TEST;
         Serial.println("[STRATEGY] Mode TEST activé");
     }
@@ -67,7 +71,8 @@ void Task_Strategy(void *pvParameters) {
                 break;
 
             case STATE_MANUAL:
-                // Debug
+                // Mode manette - contrôle via Bluepad32
+                // TODO: Ajouter logique de réception manette
                 break;
 
             case STATE_TEST:

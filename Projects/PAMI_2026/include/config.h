@@ -27,7 +27,7 @@
 #define PIN_MOT2_DIR2  26
 
 // INPUTS
-#define PIN_TIRETTE   36 // À définir (Pull-up interne requis)
+#define PIN_TIRETTE   39 // À définir (Pull-up interne requis)
 #define PIN_SW_COLOR  34 // Input Only
 #define PIN_SW_DEBUG  35 // Input Only
 #define PIN_SW_MODE   36 // "UP" - Souvent VP/VN (Input Only)
