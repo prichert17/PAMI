@@ -17,11 +17,6 @@ static const unsigned long BLINK_INTERVAL_MS = 250; // Clignotement à 2Hz
 void Task_IHM(void *pvParameters) {
     Serial.println("[IHM] Init...");
     
-    // Init PWM servos (50Hz pour servos standard, 16 bits de résolution)
-    // Nouvelle API Arduino-ESP32 v3.x
-    ledcAttach(PIN_SERVO_1, 50, 16);
-    ledcAttach(PIN_SERVO_2, 50, 16);
-    ledcAttach(PIN_SERVO_3, 50, 16);
     
     // Init LED WS2812B
     FastLED.addLeds<WS2812B, PIN_LED_DATA, GRB>(leds, NUM_LEDS);

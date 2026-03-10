@@ -4,6 +4,7 @@
 #include "config.h"
 #include "types.h"
 #include "pami_com.h"
+#include "actuators.h"
 
 // Variables globales
 extern float current_x, current_y, current_theta;
@@ -17,6 +18,10 @@ static const unsigned long PAMI_DELAY_MS = 85000; // 85s avant départ PAMI
 
 void Task_Strategy(void *pvParameters) {
     Serial.println("[STRATEGY] Démarré");
+
+    // Init servos et moteurs
+    initServos();
+    initMotors();
 
     // Vérifier si mode debug activé au démarrage
     if (digitalRead(PIN_SW_DEBUG) == LOW) {
