@@ -8,7 +8,7 @@ void Task_Comms(void *pvParameters) {
     Serial.println("[COMMS] Démarré");
 
     for (;;) {
-        receiveFromSTM32();
+        //receiveFromSTM32();
         vTaskDelay(pdMS_TO_TICKS(10)); // 100Hz
     }
 }

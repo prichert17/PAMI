@@ -55,6 +55,10 @@ void Task_IHM(void *pvParameters) {
             // Vert fixe - Match en cours
             leds[0] = CRGB::Green;
         }
+        else if (state == STATE_MANUAL) {
+            // Magenta clignotant - Mode manette
+            leds[0] = blinkState ? CRGB::Magenta : CRGB::Black;
+        }
         else if (state == STATE_WAIT) {
             // Jaune ou Bleu selon équipe - Attente tirette
             leds[0] = (teamColor == COLOR_YELLOW) ? CRGB::Yellow : CRGB::Blue;

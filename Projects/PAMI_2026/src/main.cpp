@@ -42,6 +42,7 @@ void setup() {
     pinMode(PIN_TIRETTE, INPUT_PULLUP);
     pinMode(PIN_SW_COLOR, INPUT);
     pinMode(PIN_SW_DEBUG, INPUT);
+    pinMode(PIN_SW_MODE, INPUT);  // Pin 36 (VP) - Input only, pull-up externe requis
 
     // Lecture couleur d'équipe au démarrage
     teamColor = (digitalRead(PIN_SW_COLOR) == LOW) ? COLOR_BLUE : COLOR_YELLOW;

@@ -1,5 +1,6 @@
 #include "tofs.h"
-
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 // Définition des pins LPN (XSHUT) et des objets capteurs
 // Ordre : Centre (L5CX), Gauche (L7CX), Droite (L7CX)
@@ -12,13 +13,16 @@ const byte targetAddresses[3] = {0x30, 0x31, 0x32};
 // Variables pour stocker les résultats
 VL53L5CX_ResultsData measurementData; 
 
+// Flags indiquant quels capteurs sont actifs
+bool sensorActive[3] = {false, false, false};
+
 /*Tableaux pour stocker les distances des tofs*/
 // Ordre des capteurs : [0]=Centre, [1]=Gauche, [2]=Droite
 // On stocke 16 zones (2 lignes centrales de la matrice 8x8)
 float distances_tof[3][8]; 
 
 void setup_tof() {
-  delay(1000);
+  vTaskDelay(pdMS_TO_TICKS(1000));
   Serial.println("\n--- Initialisation tofs ---");
 
   // Augmenter la vitesse I2C est crucial pour 3 capteurs matriciels
@@ -31,7 +35,7 @@ void setup_tof() {
     pinMode(lpnPins[i], OUTPUT);
     digitalWrite(lpnPins[i], LOW); 
   }
-  delay(100);
+  vTaskDelay(pdMS_TO_TICKS(100));
 
   // 2. Initialisation Séquentielle (Daisy Chain)
   for (int i = 0; i < 3; i++) {
@@ -39,19 +43,21 @@ void setup_tof() {
     
     // a. Allumer le capteur courant
     digitalWrite(lpnPins[i], HIGH);
-    delay(50); // Petit délai pour le boot hardware
+    vTaskDelay(pdMS_TO_TICKS(50)); // Petit délai pour le boot hardware
     
     // b. Initialiser le capteur à l'adresse par défaut 0x29
     // Note : begin() charge le firmware, cela prend ~1-2 secondes par capteur
     if (sensors[i].begin() == false) {
       Serial.println(F("Echec! (Pas de réponse à 0x29 ou erreur firmware)"));
-      while (1); // On bloque ici en cas d'erreur critique
+      sensorActive[i] = false;
+      continue; // On passe au capteur suivant au lieu de bloquer
     }
     
     // c. Changer l'adresse I2C
     if (sensors[i].setAddress(targetAddresses[i]) == false) {
       Serial.println(F("Echec changement adresse!"));
-      while (1);
+      sensorActive[i] = false;
+      continue;
     }
     
     Serial.printf("OK -> Adresse changée en 0x%02X\n", targetAddresses[i]);
@@ -60,14 +66,19 @@ void setup_tof() {
     sensors[i].setResolution(8*8); // 8x8 pour une meilleure résolution
     sensors[i].setRangingFrequency(15); // 15Hz
     sensors[i].startRanging();
+    sensorActive[i] = true;
   }
   
-  Serial.println("\n--- Tous les capteurs sont prêts et rangent ---");
+  int activeCount = 0;
+  for (int i = 0; i < 3; i++) if (sensorActive[i]) activeCount++;
+  Serial.printf("\n--- %d/3 capteurs initialisés et rangent ---\n", activeCount);
 }
 
 void loop_tof() {
   // On boucle sur chaque capteur
   for (int i = 0; i < 3; i++) {
+    // Ignorer les capteurs non initialisés
+    if (!sensorActive[i]) continue;
     // Vérifie si des données sont prêtes
     if (sensors[i].isDataReady()) {
       if (sensors[i].getRangingData(&measurementData)) {
@@ -98,8 +109,7 @@ void loop_tof() {
       }
     }
   }
-  Serial.println(); // Nouvelle ligne après avoir checké les 3
-  delay(50); // Petit délai pour ne pas spammer le port série (à retirer en prod)
+  vTaskDelay(pdMS_TO_TICKS(50)); // Yield au scheduler RTOS
 }
 
 // Position des coordonnées robot (mises à jour depuis pami_com.h)

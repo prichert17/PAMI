@@ -33,7 +33,48 @@ void Task_Strategy(void *pvParameters) {
         Serial.println("[STRATEGY] Mode TEST activé");
     }
 
+    static unsigned long lastPrint = 0;
+    static RobotState lastReportedState = STATE_WAIT;
+
     for (;;) {
+        // --- Relecture continue des switchs ---
+        bool swMode = (digitalRead(PIN_SW_MODE) == LOW);
+        bool swDebug = (digitalRead(PIN_SW_DEBUG) == LOW);
+
+        // Changement de mode en temps réel
+        if (swMode && state != STATE_MANUAL) {
+            state = STATE_MANUAL;
+            mode_auto = false;
+            stopMotors();
+        } else if (!swMode && state == STATE_MANUAL) {
+            // Retour en attente quand on désactive le switch manuel
+            state = STATE_WAIT;
+        }
+
+        if (swDebug && state != STATE_TEST && state != STATE_MANUAL) {
+            state = STATE_TEST;
+        } else if (!swDebug && state == STATE_TEST) {
+            state = STATE_WAIT;
+        }
+
+        // --- Print continu de l'état (toutes les 500ms) ---
+        if (millis() - lastPrint >= 500 || state != lastReportedState) {
+            const char* stateStr = "?";
+            switch(state) {
+                case STATE_WAIT:   stateStr = "WAIT";   break;
+                case STATE_DELAY:  stateStr = "DELAY";  break;
+                case STATE_GAME:   stateStr = "GAME";   break;
+                case STATE_END:    stateStr = "END";    break;
+                case STATE_MANUAL: stateStr = "MANUAL"; break;
+                case STATE_TEST:   stateStr = "TEST";   break;
+                case STATE_ERROR:  stateStr = "ERROR";  break;
+            }
+            Serial.printf("[STRAT] state=%s SW_MODE=%d SW_DEBUG=%d auto=%d\n",
+                          stateStr, swMode ? 1 : 0, swDebug ? 1 : 0, mode_auto ? 1 : 0);
+            lastPrint = millis();
+            lastReportedState = state;
+        }
+
         switch (state) {
             case STATE_WAIT:
                 // Attente tirette
@@ -50,7 +91,7 @@ void Task_Strategy(void *pvParameters) {
                     state = STATE_GAME;
                     matchStartTime = millis();
                     mode_auto = true;
-                    sendPosition(target_x, target_y); // Envoi de la position cible initiale
+                    sendPosition(target_x, target_y);
                     Serial.println("[STRATEGY] GO!");
                 }
                 break;
@@ -67,19 +108,14 @@ void Task_Strategy(void *pvParameters) {
                 break;
 
             case STATE_END:
-                // Arrêt complet
                 break;
 
             case STATE_MANUAL:
                 // Mode manette - contrôle via Bluepad32
-                // TODO: Ajouter logique de réception manette
                 break;
 
             case STATE_TEST:
-                Serial.println("[STRATEGY] Mode TEST");
-                // Mode test - permet de tester les actionneurs/capteurs
-                // TODO: Ajouter ici les séquences de test
-                // Exemple: test servos, LEDs, TOFs, moteurs...
+                // Mode test
                 break;
 
             case STATE_ERROR:
