@@ -42,8 +42,8 @@ const float MAX_ROTATION_STEP = 0.04f; // <-- NOUVEAU : Vitesse de mise en virag
 // Variables pour les Servomoteurs
 Servo servo1;
 Servo servo2;
-int angleServo1 = 63; // Position initiale
-int angleServo2 = 170;
+float angleServo1 = 63.0; // Position initiale en float
+float angleServo2 = 170.0;
 
 // ============================================
 // CALLBACKS MANETTE
@@ -147,27 +147,41 @@ void loop() {
         if (ctl->y()) { 
             current_max_speed = MAX_MOTOR_SPEED; 
         }
-
-      // --- CONTRÔLE DES SERVOS (Sychronisés et inversés) ---
-        // La gâchette droite (RT / Throttle) ferme/descend le mécanisme
+// --- CONTRÔLE DES SERVOS (Synchronisés et compensés) ---
+        // La gâchette gauche (LT / Brake) ferme/descend le mécanisme
         if (ctl->brake() > 50) {
-            angleServo1 -= 2; 
-            angleServo2 += 2; // Mouvement inversé
+            angleServo1 -= 2.0; 
+            angleServo2 += 2.5; // 1.5 fois plus grand pour rattraper son retard !
         }
         
-        // Le bouton droit (RB / R1) ouvre/monte le mécanisme
+        // Le bouton gauche (LB / L1) ouvre/monte le mécanisme
         if (ctl->l1()) {
-            angleServo1 += 2;
-            angleServo2 -= 2; // Mouvement inversé
+            angleServo1 += 2.0;
+            angleServo2 -= 2.5; // 1.5 fois plus grand
         }
 
         // Sécurité pour ne pas forcer les butées mécaniques
-        angleServo1 = constrain(angleServo1, 63, 180);
-        angleServo2 = constrain(angleServo2, 0, 170);
+        angleServo1 = constrain(angleServo1, 63.0, 180.0);
+        angleServo2 = constrain(angleServo2, 0.0, 170.0);
 
-        // Envoi des commandes
-        servo1.write(angleServo1);
-        servo2.write(angleServo2);
+        // --- NOUVEAU : ANTI-VIBRATION (State Change) ---
+        // On mémorise la dernière position envoyée
+        static int last_s1 = -1;
+        static int last_s2 = -1;
+        
+        int current_s1 = (int)angleServo1;
+        int current_s2 = (int)angleServo2;
+
+        // On n'écrit sur le port QUE si la valeur entière a changé
+        if (current_s1 != last_s1) {
+            servo1.write(current_s1);
+            last_s1 = current_s1;
+        }
+        
+        if (current_s2 != last_s2) {
+            servo2.write(current_s2);
+            last_s2 = current_s2;
+        }
 
 // --- CONTRÔLE DES MOTEURS ESP32 (Synchronisés et inversés) ---
         // Gâchette gauche (LT / Brake) : Fait tourner le mécanisme dans un sens
@@ -213,9 +227,18 @@ void loop() {
         // On calcule la priorité à la direction avec la valeur lissée
         float adjusted_ly = target_ly * (1.0 - abs(current_smoothed_rx) * 0.7);
 
-        // Mixage Arcade
+// Mixage Arcade
         float target_m1 = (current_smoothed_rx + adjusted_ly) * current_max_speed;
         float target_m2 = (current_smoothed_rx - adjusted_ly) * current_max_speed;
+
+        // --- NOUVEAU : CORRECTION MATÉRIELLE (Équilibre des Moteurs) ---
+        // On bride le moteur le plus rapide pour qu'il s'aligne sur le plus lent.
+        // Si M1 est le moteur droit et M2 le gauche (qui doit être perçu comme "plus rapide") :
+        target_m1 = target_m1 * 0.83f; 
+
+        // Si jamais c'est l'inverse physiquement sur votre robot, 
+        // commentez la ligne du dessus et décommentez celle du dessous :
+        // target_m2 = target_m2 * 0.83f;
 
         target_m1 = constrain(target_m1, -current_max_speed, current_max_speed);
         target_m2 = constrain(target_m2, -current_max_speed, current_max_speed);
