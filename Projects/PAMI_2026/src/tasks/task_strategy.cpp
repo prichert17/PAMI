@@ -40,6 +40,11 @@ void Task_Strategy(void *pvParameters) {
         // --- Relecture continue des switchs ---
         bool swMode = (digitalRead(PIN_SW_MODE) == LOW);
         bool swDebug = (digitalRead(PIN_SW_DEBUG) == LOW);
+        
+        // Mise à jour de la couleur d'équipe en temps réel (prioritaire en mode WAIT)
+        if (state == STATE_WAIT) {
+            teamColor = (digitalRead(PIN_SW_COLOR) == LOW) ? COLOR_BLUE : COLOR_YELLOW;
+        }
 
         // Changement de mode en temps réel
         if (swMode && state != STATE_MANUAL) {
