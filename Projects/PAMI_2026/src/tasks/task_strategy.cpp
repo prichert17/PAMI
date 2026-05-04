@@ -14,7 +14,8 @@ extern SemaphoreHandle_t xPoseMutex;
 
 static unsigned long matchStartTime = 0;
 static unsigned long tiretteTime = 0;
-static const unsigned long PAMI_DELAY_MS = 85000; // 85s avant départ PAMI
+// PAMI delay avant de démarrer : réduit à quelques secondes pour test (sera 85000ms plus tard)
+static const unsigned long PAMI_DELAY_MS = 3000; 
 
 void Task_Strategy(void *pvParameters) {
     Serial.println("[STRATEGY] Démarré");
@@ -81,14 +82,18 @@ void Task_Strategy(void *pvParameters) {
         }
 
         switch (state) {
-            case STATE_WAIT:
-                // Attente tirette
+            case STATE_WAIT: {
+                // Attente tirette : on s'assure qu'elle soit d'abord insérée (LOW) puis retirée (HIGH)
+                static bool tirette_mise = false;
                 if (digitalRead(PIN_TIRETTE) == LOW) {
+                    tirette_mise = true;
+                } else if (digitalRead(PIN_TIRETTE) == HIGH && tirette_mise) {
                     tiretteTime = millis();
                     state = STATE_DELAY;
-                    Serial.println("[STRATEGY] Tirette! Attente 85s...");
+                    Serial.println("[STRATEGY] Tirette retirée! Attente du chrono...");       
                 }
                 break;
+            }
 
             case STATE_DELAY:
                 // Attente 85s avant départ
