@@ -83,21 +83,17 @@ inline void disableServo(uint8_t servo) {
  */
 inline void initMotors() {
     // Moteur 1
-    ledcSetup(LEDC_CH_MOT1_DIR1, MOTOR_PWM_FREQ, MOTOR_PWM_RES);
-    ledcAttachPin(PIN_MOT1_DIR1, LEDC_CH_MOT1_DIR1);
-    ledcSetup(LEDC_CH_MOT1_DIR2, MOTOR_PWM_FREQ, MOTOR_PWM_RES);
-    ledcAttachPin(PIN_MOT1_DIR2, LEDC_CH_MOT1_DIR2);
+    ledcAttach(PIN_MOT1_DIR1, MOTOR_PWM_FREQ, MOTOR_PWM_RES);
+    ledcAttach(PIN_MOT1_DIR2, MOTOR_PWM_FREQ, MOTOR_PWM_RES);
     // Moteur 2
-    ledcSetup(LEDC_CH_MOT2_DIR1, MOTOR_PWM_FREQ, MOTOR_PWM_RES);
-    ledcAttachPin(PIN_MOT2_DIR1, LEDC_CH_MOT2_DIR1);
-    ledcSetup(LEDC_CH_MOT2_DIR2, MOTOR_PWM_FREQ, MOTOR_PWM_RES);
-    ledcAttachPin(PIN_MOT2_DIR2, LEDC_CH_MOT2_DIR2);
+    ledcAttach(PIN_MOT2_DIR1, MOTOR_PWM_FREQ, MOTOR_PWM_RES);
+    ledcAttach(PIN_MOT2_DIR2, MOTOR_PWM_FREQ, MOTOR_PWM_RES);
     
     // Arrêt initial
-    ledcWrite(LEDC_CH_MOT1_DIR1, 0);
-    ledcWrite(LEDC_CH_MOT1_DIR2, 0);
-    ledcWrite(LEDC_CH_MOT2_DIR1, 0);
-    ledcWrite(LEDC_CH_MOT2_DIR2, 0);
+    ledcWrite(PIN_MOT1_DIR1, 0);
+    ledcWrite(PIN_MOT1_DIR2, 0);
+    ledcWrite(PIN_MOT2_DIR1, 0);
+    ledcWrite(PIN_MOT2_DIR2, 0);
 }
 
 /**
@@ -113,25 +109,25 @@ inline void setMotorSpeed(uint8_t motor, int16_t speed) {
     
     if (motor == 1) {
         if (speed > 0) {
-            ledcWrite(LEDC_CH_MOT1_DIR1, pwm);
-            ledcWrite(LEDC_CH_MOT1_DIR2, 0);
+            ledcWrite(PIN_MOT1_DIR1, pwm);
+            ledcWrite(PIN_MOT1_DIR2, 0);
         } else if (speed < 0) {
-            ledcWrite(LEDC_CH_MOT1_DIR1, 0);
-            ledcWrite(LEDC_CH_MOT1_DIR2, pwm);
+            ledcWrite(PIN_MOT1_DIR1, 0);
+            ledcWrite(PIN_MOT1_DIR2, pwm);
         } else {
-            ledcWrite(LEDC_CH_MOT1_DIR1, 0);
-            ledcWrite(LEDC_CH_MOT1_DIR2, 0);
+            ledcWrite(PIN_MOT1_DIR1, 0);
+            ledcWrite(PIN_MOT1_DIR2, 0);
         }
     } else if (motor == 2) {
         if (speed > 0) {
-            ledcWrite(LEDC_CH_MOT2_DIR1, pwm);
-            ledcWrite(LEDC_CH_MOT2_DIR2, 0);
+            ledcWrite(PIN_MOT2_DIR1, pwm);
+            ledcWrite(PIN_MOT2_DIR2, 0);
         } else if (speed < 0) {
-            ledcWrite(LEDC_CH_MOT2_DIR1, 0);
-            ledcWrite(LEDC_CH_MOT2_DIR2, pwm);
+            ledcWrite(PIN_MOT2_DIR1, 0);
+            ledcWrite(PIN_MOT2_DIR2, pwm);
         } else {
-            ledcWrite(LEDC_CH_MOT2_DIR1, 0);
-            ledcWrite(LEDC_CH_MOT2_DIR2, 0);
+            ledcWrite(PIN_MOT2_DIR1, 0);
+            ledcWrite(PIN_MOT2_DIR2, 0);
         }
     }
 }
