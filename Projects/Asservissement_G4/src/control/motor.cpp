@@ -73,6 +73,14 @@ void Wheel::update_speed(float dt) {
     if (encoder_timer == nullptr) return;
 
     int32_t current_count = get_encoder_count();
+    
+    // Premier appel: initialiser last_encoder_count avec la valeur courante
+    // pour éviter un saut initial énorme
+    if (last_encoder_count == 0 && current_count != 0) {
+        last_encoder_count = current_count;
+        return;
+    }
+    
     int32_t delta = current_count - last_encoder_count;
 
     // --- GESTION DU DÉBORDEMENT (OVERFLOW) ---
