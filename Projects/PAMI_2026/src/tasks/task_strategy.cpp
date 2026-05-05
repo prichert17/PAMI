@@ -14,6 +14,7 @@ extern SemaphoreHandle_t xPoseMutex;
 
 static unsigned long matchStartTime = 0;
 static unsigned long tiretteTime = 0;
+static unsigned long delayStartTime = 0; // Pour tracker le timing du delay
 // PAMI delay avant de démarrer : réduit à quelques secondes pour test (sera 85000ms plus tard)
 static const unsigned long PAMI_DELAY_MS = 3000; 
 
@@ -95,16 +96,38 @@ void Task_Strategy(void *pvParameters) {
                 break;
             }
 
-            case STATE_DELAY:
-                // Attente 85s avant départ
-                if ((millis() - tiretteTime) >= PAMI_DELAY_MS) {
+            case STATE_DELAY: {
+                // Machine à état pour le délai d'attente avant le départ
+                static bool delayInitDone = false;
+                
+                // À la première entrée dans STATE_DELAY
+                if (!delayInitDone) {
+                    Serial.println("[STRATEGY] Reset STM32...");
+                    resetSTM32();
+                    vTaskDelay(pdMS_TO_TICKS(500)); // Attendre le reset
+                    
+                    Serial.println("[STRATEGY] Passage en mode AUTO...");
+                    setModeAuto();
+                    vTaskDelay(pdMS_TO_TICKS(500)); // Attendre confirmation
+                    
+                    delayStartTime = millis();
+                    delayInitDone = true;
+                }
+                
+                // Vérifier si le délai est écoulé (3s pour test, 85s en compétition)
+                if ((millis() - delayStartTime) >= PAMI_DELAY_MS) {
                     state = STATE_GAME;
                     matchStartTime = millis();
                     mode_auto = true;
+                    
+                    // Envoyer la première position cible
                     sendPosition(target_x, target_y);
                     Serial.println("[STRATEGY] GO!");
+                    
+                    delayInitDone = false; // Réinitialiser pour la prochaine fois
                 }
                 break;
+            }
 
             case STATE_GAME:
                 // Fin de match ?
