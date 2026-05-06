@@ -5,6 +5,7 @@
 #include "types.h"
 #include "pami_com.h"
 #include "actuators.h"
+#include "tofs.h"
 
 // Variables globales
 extern float current_x, current_y, current_theta;
@@ -39,6 +40,37 @@ void Task_Strategy(void *pvParameters) {
     static RobotState lastReportedState = STATE_WAIT;
 
     for (;;) {
+        // --- Vérification continue des TOF pour détection proximité ---
+        // Si distance < 5cm : arrêt immédiat des moteurs
+        // Si distance > 5cm : reprise du mouvement
+        static bool motorsStoppedByTOF = false;
+        bool tofProximityDetected = false;
+        
+        for (int i = 0; i < 3 && !tofProximityDetected; i++) {
+            for (int j = 0; j < 8; j++) {
+                if (distances_tof[i][j] > 0 && distances_tof[i][j] < 50) { // <5cm = 50mm
+                    tofProximityDetected = true;
+                    break;
+                }
+            }
+        }
+        
+        // Arrêt/Reprise rapide sur détection TOF (sans changer d'état)
+        tofObstacleDetected = tofProximityDetected; // Mise à jour du flag global pour la LED
+        
+        if (tofProximityDetected && !motorsStoppedByTOF && state == STATE_GAME) {
+            // Arrêt immédiat des moteurs
+            motorsStoppedByTOF = true;
+            stopMotors();
+            Serial.println("[STRATEGY] ARRÊT: Obstacle détecté < 5cm!");
+        }
+        else if (!tofProximityDetected && motorsStoppedByTOF && state == STATE_GAME) {
+            // Reprise immédiate du mouvement
+            motorsStoppedByTOF = false;
+            sendPosition(target_x, target_y); // Réenvoyer la position cible pour reprendre le mouvement
+            Serial.println("[STRATEGY] Reprise du mouvement.");
+        }
+        
         // --- Relecture continue des switchs ---
         bool swMode = (digitalRead(PIN_SW_MODE) == LOW);
         bool swDebug = (digitalRead(PIN_SW_DEBUG) == LOW);

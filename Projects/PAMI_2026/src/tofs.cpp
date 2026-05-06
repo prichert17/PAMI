@@ -1,4 +1,5 @@
 #include "tofs.h"
+#include "types.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -72,6 +73,11 @@ void setup_tof() {
   int activeCount = 0;
   for (int i = 0; i < 3; i++) if (sensorActive[i]) activeCount++;
   Serial.printf("\n--- %d/3 capteurs initialisés et rangent ---\n", activeCount);
+  
+  if (activeCount < 3) {
+      Serial.println("ERREUR : Tous les capteurs TOF n'ont pas pu être initialisés.");
+      state = STATE_ERROR;
+  }
 }
 
 void loop_tof() {

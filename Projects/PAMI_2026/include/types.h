@@ -21,5 +21,6 @@ extern SemaphoreHandle_t xPoseMutex;
 extern RobotState state;
 extern TeamColor teamColor;
 extern bool lowBattery;
+extern bool tofObstacleDetected;
 
 #endif

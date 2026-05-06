@@ -21,13 +21,14 @@ SemaphoreHandle_t xPoseMutex = NULL;
 
 // Variables globales de communication (déclarées extern dans pami_com.h)
 bool mode_auto = false;
-float target_x = 300.0f, target_y = 0.0f;
+float target_x = 1000.0f, target_y = 0.0f;
 float current_x = 0.0f, current_y = 0.0f, current_theta = 0.0f;
 
 // Variables globales d'état (déclarées extern dans types.h)
 RobotState state = STATE_WAIT;
 TeamColor teamColor = COLOR_BLUE;
 bool lowBattery = false;
+bool tofObstacleDetected = false;
 
 void setup() {
     // 1. Initialisation Debug
