@@ -44,30 +44,45 @@ void setup_tof() {
     
     // a. Allumer le capteur courant
     digitalWrite(lpnPins[i], HIGH);
-    vTaskDelay(pdMS_TO_TICKS(50)); // Petit délai pour le boot hardware
+    vTaskDelay(pdMS_TO_TICKS(200)); // Délai pour boot hardware du capteur
     
-    // b. Initialiser le capteur à l'adresse par défaut 0x29
+    // b. Essayer d'initialiser à l'adresse par défaut 0x29
     // Note : begin() charge le firmware, cela prend ~1-2 secondes par capteur
-    if (sensors[i].begin() == false) {
-      Serial.println(F("Echec! (Pas de réponse à 0x29 ou erreur firmware)"));
-      sensorActive[i] = false;
-      continue; // On passe au capteur suivant au lieu de bloquer
+    bool initSuccess = false;
+    if (sensors[i].begin() == true) {
+      // Adresse par défaut OK, changer l'adresse
+      if (sensors[i].setAddress(targetAddresses[i]) == true) {
+        Serial.printf("OK -> Adresse changée en 0x%02X\n", targetAddresses[i]);
+        initSuccess = true;
+      } else {
+        Serial.println(F("Echec changement adresse!"));
+        initSuccess = false;
+      }
+    } else {
+      // Capteur pas détecté à 0x29 : essayer directement à l'adresse cible
+      // (cas de reset sans réinitialisaton, les LPN n'ont pas de pull-up)
+      Serial.print(F("Pas de réponse à 0x29, essai à 0x"));
+      Serial.println(targetAddresses[i], HEX);
+      
+      // Essayer d'initialiser directement à l'adresse cible
+      if (sensors[i].begin(targetAddresses[i]) == true) {
+        Serial.printf("OK -> Capteur trouvé à 0x%02X (déjà initialisé précédemment)\n", targetAddresses[i]);
+        initSuccess = true;
+      } else {
+        Serial.println(F("Echec! (Pas de réponse à 0x29 ni à l'adresse cible)"));
+        initSuccess = false;
+      }
     }
     
-    // c. Changer l'adresse I2C
-    if (sensors[i].setAddress(targetAddresses[i]) == false) {
-      Serial.println(F("Echec changement adresse!"));
+    if (initSuccess) {
+      // d. Configuration (Résolution 4x4 ou 8x8, Fréquence)
+      sensors[i].setResolution(8*8); // 8x8 pour une meilleure résolution
+      sensors[i].setRangingFrequency(15); // 15Hz
+      sensors[i].startRanging();
+      sensorActive[i] = true;
+    } else {
       sensorActive[i] = false;
-      continue;
     }
-    
-    Serial.printf("OK -> Adresse changée en 0x%02X\n", targetAddresses[i]);
-
-    // d. Configuration (Résolution 4x4 ou 8x8, Fréquence)
-    sensors[i].setResolution(8*8); // 8x8 pour une meilleure résolution
-    sensors[i].setRangingFrequency(15); // 15Hz
-    sensors[i].startRanging();
-    sensorActive[i] = true;
   }
   
   int activeCount = 0;
