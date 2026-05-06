@@ -48,10 +48,10 @@ void Task_Strategy(void *pvParameters) {
         
         bool tofProximityDetected = false;
         
-        // Vérifier TOUTES les zones pour détecter un obstacle < 5cm
+        // Vérifier TOUTES les zones pour détecter un obstacle < 10cm
         for (int i = 0; i < 3 && !tofProximityDetected; i++) {
             for (int j = 0; j < 8; j++) {
-                if (distances_tof[i][j] > 0 && distances_tof[i][j] < 50) { // <5cm = 50mm
+                if (distances_tof[i][j] > 0 && distances_tof[i][j] < 100) { // <10cm = 100mm
                     tofProximityDetected = true;
                     break;
                 }
@@ -66,7 +66,7 @@ void Task_Strategy(void *pvParameters) {
             motorsStoppedByTOF = true;
             tofStopTime = millis();
             stopMotors();
-            Serial.println("[STRATEGY] ARRÊT: Obstacle détecté < 5cm!");
+            Serial.println("[STRATEGY] ARRÊT: Obstacle détecté < 10cm!");
         }
         else if (motorsStoppedByTOF && state == STATE_GAME) {
             // SORTIR de l'arrêt si obstacle a disparu

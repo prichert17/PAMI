@@ -101,13 +101,13 @@ void loop_tof() {
     // Ignorer les capteurs non initialisés
     if (!sensorActive[i]) continue;
     
-    // Réinitialiser les zones à 0 au début de chaque lecture
-    for (int z = 0; z < 8; z++) {
-      distances_tof[i][z] = 0;
-    }
-    
     // Vérifie si des données sont prêtes
     if (sensors[i].isDataReady()) {
+      // SEULEMENT si on a de nouvelles données, réinitialiser les zones
+      for (int z = 0; z < 8; z++) {
+        distances_tof[i][z] = 0;
+      }
+      
       if (sensors[i].getRangingData(&measurementData)) {
         
         // Pour ce test minimal, on cherche la distance la plus courte vue par le capteur
