@@ -100,6 +100,12 @@ void loop_tof() {
   for (int i = 0; i < 3; i++) {
     // Ignorer les capteurs non initialisés
     if (!sensorActive[i]) continue;
+    
+    // Réinitialiser les zones à 0 au début de chaque lecture
+    for (int z = 0; z < 8; z++) {
+      distances_tof[i][z] = 0;
+    }
+    
     // Vérifie si des données sont prêtes
     if (sensors[i].isDataReady()) {
       if (sensors[i].getRangingData(&measurementData)) {

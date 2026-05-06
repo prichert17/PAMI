@@ -43,11 +43,12 @@ void Task_Strategy(void *pvParameters) {
 
     for (;;) {
         // --- Vérification continue des TOF pour détection proximité ---
-        // Si distance < 5cm : arrêt immédiat des moteurs
-        // Si distance > 5cm : reprise du mouvement
         static bool motorsStoppedByTOF = false;
+        static unsigned long tofStopTime = 0;
+        
         bool tofProximityDetected = false;
         
+        // Vérifier TOUTES les zones pour détecter un obstacle < 5cm
         for (int i = 0; i < 3 && !tofProximityDetected; i++) {
             for (int j = 0; j < 8; j++) {
                 if (distances_tof[i][j] > 0 && distances_tof[i][j] < 50) { // <5cm = 50mm
@@ -57,20 +58,26 @@ void Task_Strategy(void *pvParameters) {
             }
         }
         
-        // Arrêt/Reprise rapide sur détection TOF (sans changer d'état)
-        tofObstacleDetected = tofProximityDetected; // Mise à jour du flag global pour la LED
+        // Arrêt/Reprise sur détection TOF
+        tofObstacleDetected = tofProximityDetected;
         
         if (tofProximityDetected && !motorsStoppedByTOF && state == STATE_GAME) {
-            // Arrêt immédiat des moteurs
+            // ENTRER en arrêt
             motorsStoppedByTOF = true;
+            tofStopTime = millis();
             stopMotors();
             Serial.println("[STRATEGY] ARRÊT: Obstacle détecté < 5cm!");
         }
-        else if (!tofProximityDetected && motorsStoppedByTOF && state == STATE_GAME) {
-            // Reprise immédiate du mouvement
-            motorsStoppedByTOF = false;
-            sendPosition(target_x, target_y); // Réenvoyer la position cible pour reprendre le mouvement
-            Serial.println("[STRATEGY] Reprise du mouvement.");
+        else if (motorsStoppedByTOF && state == STATE_GAME) {
+            // SORTIR de l'arrêt si obstacle a disparu
+            unsigned long timeStopped = millis() - tofStopTime;
+            
+            if (!tofProximityDetected) {
+                // Obstacle disparu immédiatement
+                motorsStoppedByTOF = false;
+                sendPosition(target_x, target_y);
+                Serial.println("[STRATEGY] Reprise du mouvement (obstacle disparu).");
+            }
         }
         
         // --- Relecture continue des switchs ---
