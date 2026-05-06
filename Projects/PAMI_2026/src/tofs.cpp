@@ -130,6 +130,7 @@ void loop_tof() {
       }
     }
   }
+  Serial.println();
   vTaskDelay(pdMS_TO_TICKS(50)); // Yield au scheduler RTOS
 }
 

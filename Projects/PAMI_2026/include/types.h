@@ -22,5 +22,6 @@ extern RobotState state;
 extern TeamColor teamColor;
 extern bool lowBattery;
 extern bool tofObstacleDetected;
+extern bool debugMode;
 
 #endif

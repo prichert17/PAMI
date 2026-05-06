@@ -16,6 +16,7 @@
 extern bool mode_auto;
 extern float target_x, target_y;
 extern float current_x, current_y, current_theta;
+extern bool debugMode; // Flag pour désactiver les logs STM32
 
 // ============================================
 // INITIALISATION
@@ -92,7 +93,9 @@ inline void receiveFromSTM32() {
   static String rxBuffer = "";
   while (Serial2.available()) {
     char c = Serial2.read();
-    Serial.write(c);
+    if (!debugMode) {
+      Serial.write(c); // Afficher les logs seulement si debug est désactivé
+    }
     if (c == '\n') {
       parseSTM32Data(rxBuffer);
       rxBuffer = "";

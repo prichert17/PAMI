@@ -26,14 +26,16 @@ void Task_Strategy(void *pvParameters) {
     initServos();
     initMotors();
 
-    // Vérifier le mode au démarrage (priorité: manette > debug > normal)
+    // Vérifier le mode au démarrage
     if (digitalRead(PIN_SW_MODE) == LOW) {
         state = STATE_MANUAL;
         Serial.println("[STRATEGY] Mode MANETTE activé");
     }
-    else if (digitalRead(PIN_SW_DEBUG) == LOW) {
-        state = STATE_TEST;
-        Serial.println("[STRATEGY] Mode TEST activé");
+    
+    // Vérifier le debug au démarrage (désactive les logs STM32)
+    debugMode = (digitalRead(PIN_SW_DEBUG) == LOW);
+    if (debugMode) {
+        Serial.println("[STRATEGY] Mode DEBUG: logs STM32 désactivés");
     }
 
     static unsigned long lastPrint = 0;
@@ -83,18 +85,14 @@ void Task_Strategy(void *pvParameters) {
         // Changement de mode en temps réel
         if (swMode && state != STATE_MANUAL) {
             state = STATE_MANUAL;
-            mode_auto = false;
-            stopMotors();
+            setModeManuel();
         } else if (!swMode && state == STATE_MANUAL) {
             // Retour en attente quand on désactive le switch manuel
             state = STATE_WAIT;
         }
 
-        if (swDebug && state != STATE_TEST && state != STATE_MANUAL) {
-            state = STATE_TEST;
-        } else if (!swDebug && state == STATE_TEST) {
-            state = STATE_WAIT;
-        }
+        // Mise à jour du mode debug en temps réel
+        debugMode = (digitalRead(PIN_SW_DEBUG) == LOW);
 
         // --- Print continu de l'état (toutes les 500ms) ---
         if (millis() - lastPrint >= 500 || state != lastReportedState) {
@@ -105,9 +103,9 @@ void Task_Strategy(void *pvParameters) {
                 case STATE_GAME:   stateStr = "GAME";   break;
                 case STATE_END:    stateStr = "END";    break;
                 case STATE_MANUAL: stateStr = "MANUAL"; break;
-                case STATE_TEST:   stateStr = "TEST";   break;
                 case STATE_ERROR:  stateStr = "ERROR";  break;
             }
+            Serial.println();
             Serial.printf("[STRAT] state=%s SW_MODE=%d SW_DEBUG=%d auto=%d\n",
                           stateStr, swMode ? 1 : 0, swDebug ? 1 : 0, mode_auto ? 1 : 0);
             lastPrint = millis();
@@ -150,11 +148,8 @@ void Task_Strategy(void *pvParameters) {
                 if ((millis() - delayStartTime) >= PAMI_DELAY_MS) {
                     state = STATE_GAME;
                     matchStartTime = millis();
-                    mode_auto = true;
-                    
-                    // Envoyer la première position cible
-                    sendPosition(target_x, target_y);
-                    Serial.println("[STRATEGY] GO!");
+                    setModeAuto(); // S'assurer d'être en mode auto au début du match                   
+
                     
                     delayInitDone = false; // Réinitialiser pour la prochaine fois
                 }
@@ -165,11 +160,12 @@ void Task_Strategy(void *pvParameters) {
                 // Fin de match ?
                 if ((millis() - matchStartTime) >= MATCH_DURATION_MS) {
                     state = STATE_END;
-                    mode_auto = false;
                     stopMotors();
                     Serial.println("[STRATEGY] FIN");
                 }
-                // TODO: Logique de déplacement
+                // Envoyer la première position cible
+                sendPosition(target_x, target_y);
+                Serial.println("[STRATEGY] GO!");
                 break;
 
             case STATE_END:
@@ -179,9 +175,7 @@ void Task_Strategy(void *pvParameters) {
                 // Mode manette - contrôle via Bluepad32
                 break;
 
-            case STATE_TEST:
-                // Mode test
-                break;
+
 
             case STATE_ERROR:
                 mode_auto = false;

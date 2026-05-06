@@ -29,6 +29,7 @@ RobotState state = STATE_WAIT;
 TeamColor teamColor = COLOR_BLUE;
 bool lowBattery = false;
 bool tofObstacleDetected = false;
+bool debugMode = false; // Quand true, désactive les logs de la STM32
 
 void setup() {
     // 1. Initialisation Debug

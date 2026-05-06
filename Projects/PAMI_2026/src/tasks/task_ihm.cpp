@@ -41,7 +41,7 @@ void Task_IHM(void *pvParameters) {
         }
         else if (tofObstacleDetected) {
             // Orange clignotant - Obstacle détecté par TOF
-            leds[0] = blinkState ? CRGB(255, 128, 0) : CRGB::Black;
+            leds[0] = blinkState ? CRGB(255, 64, 0) : CRGB::Black;
         }
         else if (state == STATE_TEST) {
             // Blanc - Mode test/debug
