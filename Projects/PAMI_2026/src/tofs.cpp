@@ -19,8 +19,19 @@ bool sensorActive[3] = {false, false, false};
 
 /*Tableaux pour stocker les distances des tofs*/
 // Ordre des capteurs : [0]=Centre, [1]=Gauche, [2]=Droite
-// On stocke 16 zones (2 lignes centrales de la matrice 8x8)
+// On stocke 8 zones (ligne du milieu de la matrice 8x8)
 float distances_tof[3][8]; 
+
+// Coordonnées (x, y) des obstacles calculées
+float obstacleX[3][8];
+float obstacleY[3][8];
+
+// Liste des obstacles détectés ce cycle
+std::vector<Obstacle> detectedObstacles;
+
+// Prototypes des fonctions helper
+float getTOFZoneAngle(uint8_t sensor, uint8_t zone);
+void distanceAngleToCoord(float distance, float angle, float* outX, float* outY); 
 
 void setup_tof() {
   vTaskDelay(pdMS_TO_TICKS(1000));
@@ -95,7 +106,54 @@ void setup_tof() {
   }
 }
 
+/**
+ * Calcule l'angle absolu d'une zone pour un capteur donné
+ * @param sensor 0=Centre, 1=Gauche, 2=Droite
+ * @param zone   0-7 (colonne dans la ligne du milieu)
+ * @return Angle absolu en degrés (0°=devant, +90°=gauche, -90°=droite)
+ */
+float getTOFZoneAngle(uint8_t sensor, uint8_t zone) {
+  float baseAngle, fov;
+  
+  if (sensor == 0) {
+    // Centre : FOV 45°, -22.5° à +22.5°
+    baseAngle = TOF_ANGLE_CENTER;
+    fov = TOF_FOV_CENTER;
+  } else if (sensor == 1) {
+    // Gauche : FOV 60°, décalé de -55.5°
+    baseAngle = TOF_ANGLE_LEFT;
+    fov = TOF_FOV_LEFT;
+  } else {
+    // Droite : FOV 60°, décalé de +55.5°
+    baseAngle = TOF_ANGLE_RIGHT;
+    fov = TOF_FOV_RIGHT;
+  }
+  
+  // Calculer l'angle de cette zone relative au capteur
+  // Zone 0 : gauche du FOV (-fov/2)
+  // Zone 7 : droite du FOV (+fov/2)
+  float zoneAngle = baseAngle + (-fov/2.0f) + (zone / 7.0f) * fov;
+  
+  return zoneAngle;
+}
+
+/**
+ * Convertit distance + angle en coordonnées cartésiennes
+ * @param distance Distance en mm
+ * @param angle    Angle absolu en degrés
+ * @param outX     Pointeur pour retourner la coordonnée X (mm)
+ * @param outY     Pointeur pour retourner la coordonnée Y (mm)
+ */
+void distanceAngleToCoord(float distance, float angle, float* outX, float* outY) {
+  float angleRad = angle * PI / 180.0f;
+  *outX = distance * cos(angleRad);
+  *outY = distance * sin(angleRad);
+}
+
 void loop_tof() {
+  // Réinitialiser la liste des obstacles détectés ce cycle
+  detectedObstacles.clear();
+  
   // On boucle sur chaque capteur
   for (int i = 0; i < 3; i++) {
     // Ignorer les capteurs non initialisés
@@ -106,37 +164,58 @@ void loop_tof() {
       // SEULEMENT si on a de nouvelles données, réinitialiser les zones
       for (int z = 0; z < 8; z++) {
         distances_tof[i][z] = 0;
+        obstacleX[i][z] = 0;
+        obstacleY[i][z] = 0;
       }
       
       if (sensors[i].getRangingData(&measurementData)) {
         
-        // Pour ce test minimal, on cherche la distance la plus courte vue par le capteur
-        int minDistance = 4000;
-        int validZones = 0;
+        // int minDistance = 4000;
+        // int validZones = 0;
 
-        // Parcourir les 16 zones centrales (lignes 4 et 5 de la matrice 8x8)
-        for(int j = 32; j < 40; j++){
+        // Lire la ligne du milieu seulement (indice 32-39 = ligne 4 de matrice 8x8)
+        for(int zone = 0; zone < 8; zone++){
+            int j = 32 + zone; // Indice dans la matrice : 32-39
+            
             // Statut 5 ou 9 = Mesure valide
             if(measurementData.target_status[j] == 5 || measurementData.target_status[j] == 9){
-              distances_tof[i][j - 32] = measurementData.distance_mm[j]; 
-
-              int dist = measurementData.distance_mm[j];
-                if(dist < minDistance && dist > 0) {
-                    minDistance = dist;
-                }
-                validZones++;
+              float dist = measurementData.distance_mm[j];
+              
+              // FILTRER : ne traiter que les obstacles < 50cm (500mm)
+              if(dist > 0 && dist < 500) {
+                distances_tof[i][zone] = dist;
+                
+                // Calculer les coordonnées de cet obstacle
+                float zoneAngle = getTOFZoneAngle(i, zone);
+                distanceAngleToCoord(dist, zoneAngle, &obstacleX[i][zone], &obstacleY[i][zone]);
+                
+                // Ajouter à la liste des obstacles détectés
+                Obstacle obs;
+                obs.x = obstacleX[i][zone];
+                obs.y = obstacleY[i][zone];
+                obs.distance = dist;
+                obs.angle = zoneAngle;
+                obs.sensor = i;
+                obs.zone = zone;
+                detectedObstacles.push_back(obs);
+              }
             }
         }
 
-        // Affichage compact pour le débogage
-        Serial.print("C"); Serial.print(i+1); 
-        Serial.print(":"); 
-        if(validZones > 0) Serial.print(minDistance); else Serial.print("---");
-        Serial.print("mm\t");
+        // Afficher les coordonnées des obstacles détectés par ce capteur
+        Serial.print("TOF"); Serial.print(i+1); Serial.print(": ");
+        for(int zone = 0; zone < 8; zone++) {
+          if(distances_tof[i][zone] > 0 && distances_tof[i][zone] < 500) {
+            Serial.print("[Z"); Serial.print(zone); Serial.print(": ");
+            Serial.print((int)obstacleX[i][zone]); Serial.print("mm,");
+            Serial.print((int)obstacleY[i][zone]); Serial.print("mm] ");
+          }
+        }
+        Serial.println();
+        vTaskDelay(pdMS_TO_TICKS(10)); // Petit délai pour port série
       }
     }
   }
-  Serial.println();
   vTaskDelay(pdMS_TO_TICKS(50)); // Yield au scheduler RTOS
 }
 
@@ -157,10 +236,6 @@ const float sensorAngles[3] = {0.0f, 0.9687f, -0.9687f}; // 55.5° = 55.5*PI/180
 
 // FOV de chaque capteur (en radians) : Centre=45°, Gauche/Droite=60°
 const float sensorFOV[3] = {0.7854f, 1.0472f, 1.0472f}; // 45°, 60°, 60°
-
-// Stockage des obstacles détectés [capteur][zone]
-float obstacleX[3][8];
-float obstacleY[3][8];
 
 void calcule_points_tof() {
   float theta = current_theta;

@@ -37,4 +37,22 @@
 #define BATTERY_MIN_V     3.0f  // Seuil alerte (par cellule, ou total à adapter)
 #define BATTERY_TIMEOUT   1000  // Temps min sous le seuil pour déclencher l'erreur
 
+// --- TOF GEOMETRY (Matriciels 8x8) ---
+// Ordre des capteurs : [0]=Centre, [1]=Gauche, [2]=Droite
+// On lit uniquement la ligne du milieu pour économiser la puissance GPU
+// Angles en degrés, orientation : 0°=devant, +90°=gauche, -90°=droite (convention robot)
+
+#define TOF_ANGLE_CENTER  0.0f    // TOF2 : au centre
+#define TOF_FOV_CENTER    45.0f   // 45° de champ
+
+#define TOF_ANGLE_LEFT    -55.5f  // TOF1 : tourné 55.5° à gauche (avant-gauche)
+#define TOF_FOV_LEFT      60.0f   // 60° de champ
+
+#define TOF_ANGLE_RIGHT   55.5f   // TOF3 : tourné 55.5° à droite (avant-droite)
+#define TOF_FOV_RIGHT     60.0f   // 60° de champ
+
+// Paramètres de la matricielle : on lit seulement la ligne du milieu (8 zones par capteur)
+#define TOF_ZONES_PER_LINE 8
+#define TOF_LINE_MIDDLE    4      // Indice de la ligne du milieu dans la matrice 8x8
+
 #endif

@@ -11,12 +11,26 @@ void calcule_points_tof();  // Convertit distances_tof en coordonnées obstacles
 
 // Tableau des distances TOF : [capteur][zone]
 // Capteurs : [0]=Centre, [1]=Gauche, [2]=Droite
-// Zones : 8 zones centrales de la matrice 8x8
+// Zones : 8 zones de la ligne du milieu de la matrice 8x8
 extern float distances_tof[3][8];
 
-// Coordonnées des obstacles détectés [capteur][zone] (en mm)
+// Coordonnées des obstacles détectés dans le repère du robot (mm)
+// Ordre : [0]=Centre, [1]=Gauche, [2]=Droite / [zone 0-7]
 extern float obstacleX[3][8];
 extern float obstacleY[3][8];
+
+// Structure pour représenter un obstacle détecté
+struct Obstacle {
+    float x;        // Position X dans le repère robot (mm)
+    float y;        // Position Y dans le repère robot (mm)
+    float distance; // Distance brute du TOF (mm)
+    float angle;    // Angle absolu du TOF (degrés, 0°=devant, +90°=gauche)
+    uint8_t sensor; // Capteur source : 0=Centre, 1=Gauche, 2=Droite
+    uint8_t zone;   // Zone détectée (0-7, colonne de la ligne du milieu)
+};
+
+// Liste des obstacles détectés ce cycle (se met à jour chaque loop_tof)
+extern std::vector<Obstacle> detectedObstacles;
 
 struct Coordinate {
     int16_t x;
