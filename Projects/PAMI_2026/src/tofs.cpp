@@ -31,7 +31,19 @@ std::vector<Obstacle> detectedObstacles;
 
 // Prototypes des fonctions helper
 float getTOFZoneAngle(uint8_t sensor, uint8_t zone);
-void distanceAngleToCoord(float distance, float angle, float* outX, float* outY); 
+void distanceAngleToCoord(float distance, float angle, float* outX, float* outY);
+
+// Position et orientation du robot en temps réel (mises à jour depuis pami_com.h)
+extern float current_x, current_y, current_theta;
+
+// Offsets des TOF par rapport au centre du robot (en mm)
+// Ordre : [0]=TOF2(Gauche), [1]=TOF3(Centre), [2]=TOF1(Droite)
+// [capteur][0]=offset_avant, [capteur][1]=offset_lateral (+ = gauche, - = droite)
+const float tofOffsets[3][2] = {
+  {15.0f,  20.0f},   // TOF2 (Gauche) : 1.5cm devant, 2cm à gauche
+  {20.0f,   0.0f},   // TOF3 (Centre) : 2cm devant
+  {15.0f, -20.0f}    // TOF1 (Droite) : 1.5cm devant, 2cm à droite
+}; 
 
 void setup_tof() {
   vTaskDelay(pdMS_TO_TICKS(1000));
@@ -108,7 +120,7 @@ void setup_tof() {
 
 /**
  * Calcule l'angle absolu d'une zone pour un capteur donné
- * @param sensor 0=Centre, 1=Gauche, 2=Droite
+ * @param sensor 0=TOF2(Gauche), 1=TOF3(Centre), 2=TOF1(Droite)
  * @param zone   0-7 (colonne dans la ligne du milieu)
  * @return Angle absolu en degrés (0°=devant, +90°=gauche, -90°=droite)
  */
@@ -116,17 +128,17 @@ float getTOFZoneAngle(uint8_t sensor, uint8_t zone) {
   float baseAngle, fov;
   
   if (sensor == 0) {
-    // Centre : FOV 45°, -22.5° à +22.5°
-    baseAngle = TOF_ANGLE_CENTER;
-    fov = TOF_FOV_CENTER;
+    // TOF2 = Gauche : FOV 60°, décalé de -55.5°
+    baseAngle = TOF_ANGLE_GAUCHE;
+    fov = TOF_FOV_GAUCHE;
   } else if (sensor == 1) {
-    // Gauche : FOV 60°, décalé de -55.5°
-    baseAngle = TOF_ANGLE_LEFT;
-    fov = TOF_FOV_LEFT;
+    // TOF3 = Centre : FOV 45°, 0°
+    baseAngle = TOF_ANGLE_CENTRE;
+    fov = TOF_FOV_CENTRE;
   } else {
-    // Droite : FOV 60°, décalé de +55.5°
-    baseAngle = TOF_ANGLE_RIGHT;
-    fov = TOF_FOV_RIGHT;
+    // TOF1 = Droite : FOV 60°, décalé de +55.5°
+    baseAngle = TOF_ANGLE_DROITE;
+    fov = TOF_FOV_DROITE;
   }
   
   // Calculer l'angle de cette zone relative au capteur
@@ -154,6 +166,13 @@ void loop_tof() {
   // Réinitialiser la liste des obstacles détectés ce cycle
   detectedObstacles.clear();
   
+  // Paramètres du robot pour transformation de repère
+  float robotX = current_x;
+  float robotY = current_y;
+  float robotTheta = current_theta;
+  float cosTheta = cos(robotTheta);
+  float sinTheta = sin(robotTheta);
+  
   // On boucle sur chaque capteur
   for (int i = 0; i < 3; i++) {
     // Ignorer les capteurs non initialisés
@@ -170,8 +189,9 @@ void loop_tof() {
       
       if (sensors[i].getRangingData(&measurementData)) {
         
-        // int minDistance = 4000;
-        // int validZones = 0;
+        // Calculer la position du capteur dans le repère absolu
+        float tofX = robotX + tofOffsets[i][0] * cosTheta - tofOffsets[i][1] * sinTheta;
+        float tofY = robotY + tofOffsets[i][0] * sinTheta + tofOffsets[i][1] * cosTheta;
 
         // Lire la ligne du milieu seulement (indice 32-39 = ligne 4 de matrice 8x8)
         for(int zone = 0; zone < 8; zone++){
@@ -185,14 +205,25 @@ void loop_tof() {
               if(dist > 0 && dist < 500) {
                 distances_tof[i][zone] = dist;
                 
-                // Calculer les coordonnées de cet obstacle
+                // Calculer l'angle absolu de cette zone
                 float zoneAngle = getTOFZoneAngle(i, zone);
-                distanceAngleToCoord(dist, zoneAngle, &obstacleX[i][zone], &obstacleY[i][zone]);
+                float zoneAngleAbs = robotTheta + zoneAngle * PI / 180.0f;
+                
+                // Position relative du capteur (repère du capteur)
+                float relX = dist * cos(zoneAngle * PI / 180.0f);
+                float relY = dist * sin(zoneAngle * PI / 180.0f);
+                
+                // Transformer du repère du capteur au repère absolu
+                float absX = tofX + relX * cosTheta - relY * sinTheta;
+                float absY = tofY + relX * sinTheta + relY * cosTheta;
+                
+                obstacleX[i][zone] = absX;
+                obstacleY[i][zone] = absY;
                 
                 // Ajouter à la liste des obstacles détectés
                 Obstacle obs;
-                obs.x = obstacleX[i][zone];
-                obs.y = obstacleY[i][zone];
+                obs.x = absX;
+                obs.y = absY;
                 obs.distance = dist;
                 obs.angle = zoneAngle;
                 obs.sensor = i;
@@ -202,7 +233,7 @@ void loop_tof() {
             }
         }
 
-        // Afficher les coordonnées des obstacles détectés par ce capteur
+        // Afficher les coordonnées des obstacles détectés par ce capteur (repère absolu)
         Serial.print("TOF"); Serial.print(i+1); Serial.print(": ");
         for(int zone = 0; zone < 8; zone++) {
           if(distances_tof[i][zone] > 0 && distances_tof[i][zone] < 500) {
@@ -218,17 +249,6 @@ void loop_tof() {
   }
   vTaskDelay(pdMS_TO_TICKS(50)); // Yield au scheduler RTOS
 }
-
-// Position des coordonnées robot (mises à jour depuis pami_com.h)
-extern float current_x, current_y, current_theta;
-
-// Offsets des TOF par rapport au centre du robot (en mm)
-// [capteur][0]=offset_avant, [capteur][1]=offset_lateral (+ = gauche, - = droite)
-const float tofOffsets[3][2] = {
-  {20.0f,   0.0f},   // Centre : 2cm devant
-  {15.0f,  20.0f},   // Gauche : 1.5cm devant, 2cm à gauche
-  {15.0f, -20.0f}    // Droite : 1.5cm devant, 2cm à droite
-};
 
 // Angle des capteurs par rapport à l'avant du robot (en radians)
 // Centre=0°, Gauche=+55.5°, Droite=-55.5°
