@@ -93,9 +93,15 @@ void Task_Strategy(void *pvParameters) {
         if (swMode && state != STATE_MANUAL) {
             state = STATE_MANUAL;
             setModeManuel();
+            // Mode manuel : servo pin 15 → 90°, servo pin 19 → 0°
+            setServoAngle(2, 80);  // Servo 2 = pin 15
+            setServoAngle(1, 0);   // Servo 1 = pin 19
         } else if (!swMode && state == STATE_MANUAL) {
             // Retour en attente quand on désactive le switch manuel
             state = STATE_WAIT;
+            // Mode auto : servo pin 15 → 180°, servo pin 19 → 0°
+            setServoAngle(2, 0);  // Servo 2 = pin 15
+            setServoAngle(1, 0);    // Servo 1 = pin 19
         }
 
         // Mise à jour du mode debug en temps réel
