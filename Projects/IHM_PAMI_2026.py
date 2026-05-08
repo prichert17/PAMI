@@ -29,6 +29,16 @@ last_robot_move_time = None
 robot_stopped = False
 ser = None  # Variable globale pour la connexion série
 message_log = deque(maxlen=25)  # Log des 25 derniers messages
+obstacles = {}  # Dictionnaire pour stocker les obstacles par capteur (TOF1, TOF2, etc.)
+obstacles_time = {}  # Timestamp de la dernière mise à jour de chaque capteur
+OBSTACLE_TIMEOUT = 1.0  # Temps avant d'effacer les obstacles (en secondes)
+
+# Couleurs pour les différents capteurs TOF
+OBSTACLE_COLORS = {
+    'TOF1': 'blue',
+    'TOF2': 'orange',
+    'TOF3': 'purple',
+}
 
 # Variables pour la tension
 voltage_current = 0.0  # Tension actuelle en V
@@ -153,6 +163,27 @@ def parse_line(line):
             robot_pos[1] = new_y
             robot_history.append((new_x, new_y))
 
+def parse_obstacles(line):
+    """Parse les lignes TOF et extrait les coordonnées des obstacles"""
+    global obstacles, obstacles_time
+    # Format: TOF3: [Z0: 268mm,128mm] [Z1: 296mm,200mm] [Z2: 301mm,277mm]
+    m = re.match(r'TOF(\d+):\s*(.+)', line)
+    if m:
+        tof_name = f'TOF{m.group(1)}'
+        tof_data = m.group(2)
+        
+        # Extract coordinates from [Zn: Xmm,Ymm] patterns
+        coords = []
+        for match in re.finditer(r'\[Z\d+:\s*(\d+)mm,(\d+)mm\]', tof_data):
+            x = int(match.group(1))
+            y = int(match.group(2))
+            coords.append((y, x))  # Inverser X et Y
+        
+        with lock:
+            if coords:
+                obstacles[tof_name] = coords
+                obstacles_time[tof_name] = time.time()  # Mettre à jour le timestamp
+
 def serial_thread():
     global ser
     try:
@@ -168,6 +199,7 @@ def serial_thread():
             line = ser.readline().decode("utf-8", errors="ignore").strip()
             if line:
                 parse_line(line)
+                parse_obstacles(line)  # Parse les obstacles (TOF1, TOF2, etc.)
     except Exception as e:
         print("Erreur série :", e)
     finally:
@@ -177,7 +209,7 @@ def serial_thread():
 def reset_robot(event):
     """Fonction appelée quand on clique sur Reset"""
     global ser, robot_history, target_history, robot_pos, robot_angle, target_pos, start_time, last_robot_move_time, robot_stopped
-    global voltage_current, voltage_min, voltage_last, voltage_alert
+    global voltage_current, voltage_min, voltage_last, voltage_alert, obstacles, obstacles_time
     if ser and ser.is_open:
         try:
             ser.write(b'RESET\n')
@@ -186,6 +218,8 @@ def reset_robot(event):
             with lock:
                 robot_history.clear()
                 target_history.clear()
+                obstacles.clear()
+                obstacles_time.clear()
                 robot_pos[0] = 0
                 robot_pos[1] = 0
                 robot_angle = 0
@@ -205,7 +239,7 @@ def reset_robot(event):
 def reconnect(event):
     """Fonction appelée quand on clique sur Connect - Réinitialise tout"""
     global ser, connection_ok, robot_history, target_history, robot_pos, robot_angle, target_pos, start_time, last_robot_move_time, robot_stopped
-    global voltage_current, voltage_min, voltage_last, voltage_alert
+    global voltage_current, voltage_min, voltage_last, voltage_alert, obstacles, obstacles_time
     try:
         # Ferme l'ancienne connexion
         if ser and ser.is_open:
@@ -215,6 +249,8 @@ def reconnect(event):
         with lock:
             robot_history.clear()
             target_history.clear()
+            obstacles.clear()
+            obstacles_time.clear()
             robot_pos[0] = 0
             robot_pos[1] = 0
             robot_angle = 0
@@ -268,6 +304,12 @@ target_dot, = ax.plot([], [], '*', color='lime', markersize=20, label="Cible (ac
 robot_hist_plot, = ax.plot([], [], '.', color='crimson', alpha=0.25, markersize=8, label="Trajet robot")
 target_hist_plot, = ax.plot([], [], '.', color='deepskyblue', alpha=0.7, markersize=18, label="Historique cibles")
 
+# Plots pour les obstacles (capteurs TOF)
+obstacle_plots = {}
+for tof_name in ['TOF1', 'TOF2', 'TOF3']:
+    color = OBSTACLE_COLORS.get(tof_name, 'gray')
+    obstacle_plots[tof_name], = ax.plot([], [], 's', color=color, markersize=8, alpha=0.8, label=tof_name)
+
 # Flèche pour l'orientation du robot
 ARROW_LENGTH = 150  # Longueur de la flèche en mm
 robot_arrow = ax.annotate('', xy=(0, 0), xytext=(0, 0),
@@ -308,12 +350,15 @@ plt.tight_layout()
 
 def update(_):
     global robot_stopped, robot_arrow, voltage_alert
+    now = time.time()
     with lock:
         rx, ry = robot_pos
         angle = robot_angle
         tx, ty = target_pos
         rob_hist = list(robot_history)
         tar_hist = list(target_history)
+        obstacles_data = dict(obstacles)
+        obstacles_time_data = dict(obstacles_time)
         terr = terrain_str
         st = start_time
         last_move = last_robot_move_time
@@ -322,6 +367,14 @@ def update(_):
         v_min = voltage_min
         v_alert = voltage_alert
         v_alert_time = voltage_alert_time
+        
+        # Nettoyer les obstacles qui n'ont pas reçu de mise à jour récente
+        expired_tofs = [tof for tof, last_time in obstacles_time_data.items() if (now - last_time) > OBSTACLE_TIMEOUT]
+        for tof in expired_tofs:
+            if tof in obstacles:
+                del obstacles[tof]
+            if tof in obstacles_time:
+                del obstacles_time[tof]
     
     # Axes inversés (Y sur axe X, X sur axe Y):
     robot_dot.set_data([ry], [rx])
@@ -348,6 +401,15 @@ def update(_):
         target_hist_plot.set_data(xs, ys)
     else:
         target_hist_plot.set_data([], [])
+    
+    # Mise à jour des obstacles (capteurs TOF)
+    for tof_name, plot in obstacle_plots.items():
+        if tof_name in obstacles_data and obstacles_data[tof_name]:
+            coords = obstacles_data[tof_name]
+            ys, xs = zip(*coords)  # Axes inversés (Y horizontal, X vertical)
+            plot.set_data(ys, xs)
+        else:
+            plot.set_data([], [])
     
     text_robot.set_text(f"Robot : ({rx:.1f}, {ry:.1f}) θ={angle:.1f}°")
     text_target.set_text(f"Cible : ({tx:.1f}, {ty:.1f})")
