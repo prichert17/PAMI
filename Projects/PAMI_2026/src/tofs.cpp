@@ -4,8 +4,8 @@
 #include <freertos/task.h>
 
 // Définition des pins LPN (XSHUT) et des objets capteurs
-// Ordre : Centre (L5CX), Gauche (L7CX), Droite (L7CX)
-const int lpnPins[3] = {PIN_TOF2_LPN, PIN_TOF3_LPN, PIN_TOF1_LPN}; 
+// Ordre : [0]=TOF1(Droite), [1]=TOF2(Gauche), [2]=TOF3(Centre)
+const int lpnPins[3] = {PIN_TOF1_LPN, PIN_TOF2_LPN, PIN_TOF3_LPN}; 
 SparkFun_VL53L5CX sensors[3]; 
 
 // Nouvelles adresses I2C cibles (Le défaut est 0x29)
@@ -37,12 +37,12 @@ void distanceAngleToCoord(float distance, float angle, float* outX, float* outY)
 extern float current_x, current_y, current_theta;
 
 // Offsets des TOF par rapport au centre du robot (en mm)
-// Ordre : [0]=TOF2(Gauche), [1]=TOF3(Centre), [2]=TOF1(Droite)
+// Ordre : [0]=TOF1(Droite), [1]=TOF2(Gauche), [2]=TOF3(Centre)
 // [capteur][0]=offset_avant, [capteur][1]=offset_lateral (+ = gauche, - = droite)
 const float tofOffsets[3][2] = {
+  {15.0f, -20.0f},   // TOF1 (Droite) : 1.5cm devant, 2cm à droite
   {15.0f,  20.0f},   // TOF2 (Gauche) : 1.5cm devant, 2cm à gauche
-  {20.0f,   0.0f},   // TOF3 (Centre) : 2cm devant
-  {15.0f, -20.0f}    // TOF1 (Droite) : 1.5cm devant, 2cm à droite
+  {20.0f,   0.0f}    // TOF3 (Centre) : 2cm devant
 }; 
 
 void setup_tof() {
@@ -120,7 +120,7 @@ void setup_tof() {
 
 /**
  * Calcule l'angle absolu d'une zone pour un capteur donné
- * @param sensor 0=TOF2(Gauche), 1=TOF3(Centre), 2=TOF1(Droite)
+ * @param sensor 0=TOF1(Droite), 1=TOF2(Gauche), 2=TOF3(Centre)
  * @param zone   0-7 (colonne dans la ligne du milieu)
  * @return Angle absolu en degrés (0°=devant, +90°=gauche, -90°=droite)
  */
@@ -128,17 +128,17 @@ float getTOFZoneAngle(uint8_t sensor, uint8_t zone) {
   float baseAngle, fov;
   
   if (sensor == 0) {
-    // TOF2 = Gauche : FOV 60°, décalé de -55.5°
-    baseAngle = TOF_ANGLE_GAUCHE;
-    fov = TOF_FOV_GAUCHE;
-  } else if (sensor == 1) {
-    // TOF3 = Centre : FOV 45°, 0°
-    baseAngle = TOF_ANGLE_CENTRE;
-    fov = TOF_FOV_CENTRE;
-  } else {
     // TOF1 = Droite : FOV 60°, décalé de +55.5°
     baseAngle = TOF_ANGLE_DROITE;
     fov = TOF_FOV_DROITE;
+  } else if (sensor == 1) {
+    // TOF2 = Gauche : FOV 60°, décalé de -55.5°
+    baseAngle = TOF_ANGLE_GAUCHE;
+    fov = TOF_FOV_GAUCHE;
+  } else {
+    // TOF3 = Centre : FOV 45°, 0°
+    baseAngle = TOF_ANGLE_CENTRE;
+    fov = TOF_FOV_CENTRE;
   }
   
   // Calculer l'angle de cette zone relative au capteur
@@ -169,9 +169,10 @@ void loop_tof() {
   // Paramètres du robot pour transformation de repère
   float robotX = current_x;
   float robotY = current_y;
-  float robotTheta = current_theta;
-  float cosTheta = cos(robotTheta);
-  float sinTheta = sin(robotTheta);
+  float robotTheta = current_theta;  // En degrés
+  float robotThetaRad = robotTheta * PI / 180.0f;  // Convertir en radians
+  float cosTheta = cos(robotThetaRad);
+  float sinTheta = sin(robotThetaRad);
   
   // On boucle sur chaque capteur
   for (int i = 0; i < 3; i++) {
@@ -205,17 +206,14 @@ void loop_tof() {
               if(dist > 0 && dist < 500) {
                 distances_tof[i][zone] = dist;
                 
-                // Calculer l'angle absolu de cette zone
-                float zoneAngle = getTOFZoneAngle(i, zone);
-                float zoneAngleAbs = robotTheta + zoneAngle * PI / 180.0f;
+                // Calculer l'angle absolu de cette zone dans le repère terrain
+                float zoneAngle = getTOFZoneAngle(i, zone);  // Angle relatif au robot (en degrés)
+                float obstacleAngleDeg = robotTheta + zoneAngle;  // Angle absolu en degrés
+                float obstacleAngleRad = obstacleAngleDeg * PI / 180.0f;  // Convertir en radians
                 
-                // Position relative du capteur (repère du capteur)
-                float relX = dist * cos(zoneAngle * PI / 180.0f);
-                float relY = dist * sin(zoneAngle * PI / 180.0f);
-                
-                // Transformer du repère du capteur au repère absolu
-                float absX = tofX + relX * cosTheta - relY * sinTheta;
-                float absY = tofY + relX * sinTheta + relY * cosTheta;
+                // Position de l'obstacle en repère absolu
+                float absX = tofX + dist * cos(obstacleAngleRad);
+                float absY = tofY + dist * sin(obstacleAngleRad);
                 
                 obstacleX[i][zone] = absX;
                 obstacleY[i][zone] = absY;
