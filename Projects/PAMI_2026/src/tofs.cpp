@@ -142,9 +142,9 @@ float getTOFZoneAngle(uint8_t sensor, uint8_t zone) {
   }
   
   // Calculer l'angle de cette zone relative au capteur
-  // Zone 0 : gauche du FOV (-fov/2)
-  // Zone 7 : droite du FOV (+fov/2)
-  float zoneAngle = baseAngle + (-fov/2.0f) + (zone / 7.0f) * fov;
+  // Zone 0 : droite du FOV (+fov/2)
+  // Zone 7 : gauche du FOV (-fov/2)
+  float zoneAngle = baseAngle + (fov/2.0f) - (zone / 7.0f) * fov;
   
   return zoneAngle;
 }
