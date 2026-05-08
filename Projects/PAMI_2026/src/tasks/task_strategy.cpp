@@ -163,17 +163,25 @@ void Task_Strategy(void *pvParameters) {
                 break;
             }
 
-            case STATE_GAME:
+            case STATE_GAME: {
+                static bool gameStartSent = false;
+                
+                // Envoyer la position cible une seule fois au début
+                if (!gameStartSent) {
+                    sendPosition(target_x, target_y);
+                    gameStartSent = true;
+                }
+                
                 // Fin de match ?
                 if ((millis() - matchStartTime) >= MATCH_DURATION_MS) {
                     state = STATE_END;
                     stopMotors();
+                    gameStartSent = false; // Réinitialiser pour la prochaine partie
                     Serial.println("[STRATEGY] FIN");
                 }
-                // Envoyer la première position cible
-                sendPosition(target_x, target_y);
-                Serial.println("[STRATEGY] GO!");
+                //Serial.println("[STRATEGY] GO!");
                 break;
+            }
 
             case STATE_END:
                 break;

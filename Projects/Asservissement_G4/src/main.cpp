@@ -92,6 +92,9 @@ float target_z = 0.0f;  // Rotation en degrés
 // Compteur pour l'affichage périodique
 static uint32_t lastSend = 0;
 
+// Timer pour redémarrage asserv 1s après réception de commande pos
+static uint32_t asserv_restart_time = 0;
+
 int main(void)
 {
     HAL_Init();
@@ -163,6 +166,12 @@ int main(void)
     serial.send("==================\r\n\r\n");
 
     while (1) {
+        // Vérifier si l'asserv doit redémarrer (1s après réception commande pos)
+        if (asserv_restart_time != 0 && HAL_GetTick() >= asserv_restart_time) {
+            asserv.start_asserv();
+            asserv_restart_time = 0;
+        }
+
         // Affichage toutes les 500ms (dans les deux modes)
         if (HAL_GetTick() - lastSend > 500) {
             
@@ -380,6 +389,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         sscanf(&p_cmd[2], "%d", &val);
                         target_x = (float)val;
                         asserv.set_target_position(Vector2DAndRotation(target_x, target_y, target_z * M_PI / 180.0f));
+                        
+                        // Si asserv désactivé, programmer redémarrage dans 1s
+                        if (!asserv.is_started()) {
+                            asserv_restart_time = HAL_GetTick() + 1000;
+                        }
+                        
                         serial.printf(">> X=%d\r\n", val);
                     } else {
                         serial.send(">> Err: mode MANUEL\r\n");

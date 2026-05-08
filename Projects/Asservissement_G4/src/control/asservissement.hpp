@@ -69,6 +69,8 @@ class Asserv_Position{
         void update_asserv();
         void stop_asserv();
         void set_target_position(Vector2DAndRotation target_position);
+        
+        bool is_started() const { return asserv_started; }
 
         void set_motors_power_relative(Vector2DAndRotation power);
         void set_motors_power_absolute(Vector2DAndRotation power);
