@@ -331,10 +331,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     asserv.stop_asserv();
                     serial.send(">> MOTORS STOPPED\r\n");
                 }
-                // Parser RESET (Réinitialisation position)
-                else if (strncmp(p_cmd, "reset", 5) == 0) {
-                    odometry.reset_position(0.0f, 0.0f, 0.0f);
-                    serial.send(">> POSITION RESET\r\n");
+                // Parser RESET (Réinitialisation position avec paramètres)
+                else if (strncmp(p_cmd, "reset:", 6) == 0) {
+                    int x = 0, y = 0, z = 0;
+                    if (sscanf(&p_cmd[6], "%d:%d:%d", &x, &y, &z) == 3) {
+                        float theta_rad = (float)z * M_PI / 180.0f;
+                        odometry.reset_position((float)x, (float)y, theta_rad);
+                        serial.printf(">> RESET: X=%d Y=%d Z=%d\r\n", x, y, z);
+                    } else {
+                        serial.send(">> Err: reset:x:y:z\r\n");
+                    }
                 }
                 // Parser MODE MANUEL
                 else if (strncmp(p_cmd, "mode manuel", 11) == 0) {

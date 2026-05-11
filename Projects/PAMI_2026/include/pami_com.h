@@ -66,8 +66,10 @@ inline void stopMotors() {
   sendToSTM32("stop");
 }
 
-inline void resetSTM32() {
-  sendToSTM32("reset");
+inline void resetSTM32(int x, int y, int z) {
+  char buf[32];
+  snprintf(buf, sizeof(buf), "reset:%d:%d:%d", x, y, z);
+  Serial2.println(buf);
 }
 
 // ============================================

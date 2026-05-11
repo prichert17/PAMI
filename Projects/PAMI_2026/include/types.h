@@ -24,4 +24,9 @@ extern bool lowBattery;
 extern bool tofObstacleDetected;
 extern bool debugMode;
 
+// Configuration d'origine du robot
+extern const float ROBOT_INIT_X;
+extern const float ROBOT_INIT_Y;
+extern const float ROBOT_INIT_Z;
+
 #endif

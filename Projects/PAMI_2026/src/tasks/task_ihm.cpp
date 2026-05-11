@@ -14,6 +14,12 @@ static bool blinkState = false;
 static unsigned long lastBlinkTime = 0;
 static const unsigned long BLINK_INTERVAL_MS = 250; // Clignotement à 2Hz
 
+// Clignotement rapide en mode debug (0.7s on, 0.3s off)
+static bool debugBlinkState = true;  // true = allumé, false = éteint
+static unsigned long lastDebugBlinkTime = 0;
+static const unsigned long DEBUG_BLINK_ON_MS = 700;   // 0.7s allumé
+static const unsigned long DEBUG_BLINK_OFF_MS = 300;  // 0.3s éteint
+
 void Task_IHM(void *pvParameters) {
     Serial.println("[IHM] Init...");
     
@@ -27,11 +33,18 @@ void Task_IHM(void *pvParameters) {
     Serial.println("[IHM] Prêt");
 
     for (;;) {
-        // Gestion du clignotement
+        // Gestion du clignotement normal
         unsigned long now = millis();
         if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
             blinkState = !blinkState;
             lastBlinkTime = now;
+        }
+
+        // Gestion du clignotement rapide pour le debug (0.7s on, 0.3s off)
+        unsigned long debugInterval = debugBlinkState ? DEBUG_BLINK_ON_MS : DEBUG_BLINK_OFF_MS;
+        if (now - lastDebugBlinkTime >= debugInterval) {
+            debugBlinkState = !debugBlinkState;
+            lastDebugBlinkTime = now;
         }
 
         // Logique de couleur LED (priorité décroissante)
@@ -65,7 +78,13 @@ void Task_IHM(void *pvParameters) {
         }
         else if (state == STATE_WAIT) {
             // Jaune ou Bleu selon équipe - Attente tirette
-            leds[0] = (teamColor == COLOR_YELLOW) ? CRGB::Yellow : CRGB::Blue;
+            // En mode debug, clignoter rapidement (0.7s on, 0.3s off)
+            if (debugMode) {
+                CRGB teamLed = (teamColor == COLOR_YELLOW) ? CRGB::Yellow : CRGB::Blue;
+                leds[0] = debugBlinkState ? teamLed : CRGB::Black;
+            } else {
+                leds[0] = (teamColor == COLOR_YELLOW) ? CRGB::Yellow : CRGB::Blue;
+            }
         }
         else if (state == STATE_END) {
             // Vert fixe - Match terminé

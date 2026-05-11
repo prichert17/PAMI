@@ -11,13 +11,18 @@
 extern float current_x, current_y, current_theta;
 extern float target_x, target_y;
 extern bool mode_auto;
+extern bool debugMode;
 extern SemaphoreHandle_t xPoseMutex;
 
 static unsigned long matchStartTime = 0;
 static unsigned long tiretteTime = 0;
 static unsigned long delayStartTime = 0; // Pour tracker le timing du delay
-// PAMI delay avant de démarrer : réduit à quelques secondes pour test (sera 85000ms plus tard)
-static const unsigned long PAMI_DELAY_MS = 3000; 
+
+// Constantes de timing selon le mode debug
+static const unsigned long DEBUG_DELAY_MS = 3000;     // 3s en debug
+static const unsigned long NORMAL_DELAY_MS = 85000;   // 85s en normal
+static const unsigned long DEBUG_MATCH_DURATION_MS = 18000;   // 18s en debug
+static const unsigned long NORMAL_MATCH_DURATION_MS = 99000;  // 99s en normal 
 
 void Task_Strategy(void *pvParameters) {
     Serial.println("[STRATEGY] Démarré");
@@ -93,13 +98,13 @@ void Task_Strategy(void *pvParameters) {
         if (swMode && state != STATE_MANUAL) {
             state = STATE_MANUAL;
             setModeManuel();
-            // Mode manuel : servo pin 15 → 90°, servo pin 19 → 0°
+            // Mode manuel : servo pin 15 → 80°, servo pin 19 → 0°
             setServoAngle(2, 80);  // Servo 2 = pin 15
             setServoAngle(1, 0);   // Servo 1 = pin 19
         } else if (!swMode && state == STATE_MANUAL) {
             // Retour en attente quand on désactive le switch manuel
             state = STATE_WAIT;
-            // Mode auto : servo pin 15 → 180°, servo pin 19 → 0°
+            // Mode auto : servo pin 15 → 0°, servo pin 19 → 0°
             setServoAngle(2, 0);  // Servo 2 = pin 15
             setServoAngle(1, 0);    // Servo 1 = pin 19
         }
@@ -146,7 +151,7 @@ void Task_Strategy(void *pvParameters) {
                 // À la première entrée dans STATE_DELAY
                 if (!delayInitDone) {
                     Serial.println("[STRATEGY] Reset STM32...");
-                    resetSTM32();
+                    resetSTM32((int)ROBOT_INIT_X, (int)ROBOT_INIT_Y, (int)ROBOT_INIT_Z);
                     vTaskDelay(pdMS_TO_TICKS(500)); // Attendre le reset
                     
                     Serial.println("[STRATEGY] Passage en mode AUTO...");
@@ -157,8 +162,9 @@ void Task_Strategy(void *pvParameters) {
                     delayInitDone = true;
                 }
                 
-                // Vérifier si le délai est écoulé (3s pour test, 85s en compétition)
-                if ((millis() - delayStartTime) >= PAMI_DELAY_MS) {
+                // Vérifier si le délai est écoulé (3s ou 85s selon debug)
+                unsigned long delayMS = debugMode ? DEBUG_DELAY_MS : NORMAL_DELAY_MS;
+                if ((millis() - delayStartTime) >= delayMS) {
                     state = STATE_GAME;
                     matchStartTime = millis();
                     setModeAuto(); // S'assurer d'être en mode auto au début du match                   
@@ -178,8 +184,9 @@ void Task_Strategy(void *pvParameters) {
                     gameStartSent = true;
                 }
                 
-                // Fin de match ?
-                if ((millis() - matchStartTime) >= MATCH_DURATION_MS) {
+                // Fin de match ? (18s ou 99s selon debug)
+                unsigned long matchDurationMS = debugMode ? DEBUG_MATCH_DURATION_MS : NORMAL_MATCH_DURATION_MS;
+                if ((millis() - matchStartTime) >= matchDurationMS) {
                     state = STATE_END;
                     stopMotors();
                     gameStartSent = false; // Réinitialiser pour la prochaine partie

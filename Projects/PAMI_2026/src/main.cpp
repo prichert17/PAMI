@@ -15,13 +15,21 @@
 #include "pami_com.h" // Prototypes de fonctions de communication avec STM32
 #include "tofs.h" // Prototypes de fonctions liées aux capteurs ToF
 
+// ============================================
+// CONFIGURATION D'ORIGINE DU ROBOT
+// ============================================
+// Coordonnées initiales (ajuster selon position de départ)
+const float ROBOT_INIT_X = 100.0f;   // Position X initiale (mm)
+const float ROBOT_INIT_Y = 200.0f;   // Position Y initiale (mm)
+const float ROBOT_INIT_Z = 45.0f;    // Orientation initiale (degrés)
+
 // --- VARIABLES GLOBALES SYSTÈME ---
 // Définition du Mutex (déclaré extern dans types.h)
 SemaphoreHandle_t xPoseMutex = NULL;
 
 // Variables globales de communication (déclarées extern dans pami_com.h)
 bool mode_auto = false;
-float target_x = 1000.0f, target_y = 0.0f;
+float target_x = 1000.0f, target_y = 1000.0f;
 float current_x = 0.0f, current_y = 0.0f, current_theta = 0.0f;
 
 // Variables globales d'état (déclarées extern dans types.h)
