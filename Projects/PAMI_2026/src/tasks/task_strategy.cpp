@@ -18,7 +18,7 @@ static unsigned long matchStartTime = 0;
 static unsigned long tiretteTime = 0;
 static unsigned long delayStartTime = 0; // Pour tracker le timing du delay
 
-static const uint8_t SERVO_END_POS_2 = 125; // Servo sur D15
+static const uint8_t SERVO_END_POS_2 = 80; // Servo sur D15 (125° sinon)
 static const uint8_t SERVO_END_POS_3 = 70;  // Servo sur D27
 static const uint8_t SERVO_END_STEP = 1;
 static const unsigned long SERVO_END_STEP_MS = 30;
@@ -26,7 +26,7 @@ static const unsigned long SERVO_END_STEP_MS = 30;
 // Constantes de timing selon le mode debug
 static const unsigned long DEBUG_DELAY_MS = 3000;     // 3s en debug
 static const unsigned long NORMAL_DELAY_MS = 85000;   // 85s en normal
-static const unsigned long DEBUG_MATCH_DURATION_MS = 18000;   // 18s en debug
+static const unsigned long DEBUG_MATCH_DURATION_MS = 17000;   // 17s en debug
 static const unsigned long NORMAL_MATCH_DURATION_MS = 99000;  // 99s en normal 
 
 void Task_Strategy(void *pvParameters) {
@@ -216,7 +216,7 @@ void Task_Strategy(void *pvParameters) {
                         goingUp = true;
                         lastServoStep = millis();
                         setServoAngle(2, servo1Angle); // D15
-                        setServoAngle(3, servo3Angle); // D19
+                        //setServoAngle(3, servo3Angle); // D19
                         endSeqInitDone = true;
                         Serial.println("[STRATEGY] Séquence de fin de match démarrée");
                     }
@@ -228,26 +228,30 @@ void Task_Strategy(void *pvParameters) {
                             if (servo1Angle < SERVO_END_POS_2) {
                                 servo1Angle = min<uint8_t>(SERVO_END_POS_2, servo1Angle + SERVO_END_STEP);
                             }
+                            /*
                             if (servo3Angle < SERVO_END_POS_3) {
                                 servo3Angle = min<uint8_t>(SERVO_END_POS_3, servo3Angle + SERVO_END_STEP);
-                            }
+                            }*/
 
                             setServoAngle(2, servo1Angle); // D15
-                            setServoAngle(3, servo3Angle); // D19
+                            //setServoAngle(3, servo3Angle); // D19
 
-                            if (servo1Angle >= SERVO_END_POS_2 && servo3Angle >= SERVO_END_POS_3) {
+                            //if (servo1Angle >= SERVO_END_POS_2 && servo3Angle >= SERVO_END_POS_3) {
+                            if (servo1Angle >= SERVO_END_POS_2) {
                                 goingUp = false;
                             }
                         } else {
                             if (servo1Angle > 0) {
                                 servo1Angle = (servo1Angle > SERVO_END_STEP) ? (servo1Angle - SERVO_END_STEP) : 0;
                             }
+                            /*
                             if (servo3Angle > 0) {
                                 servo3Angle = (servo3Angle > SERVO_END_STEP) ? (servo3Angle - SERVO_END_STEP) : 0;
                             }
+                            */
 
                             setServoAngle(2, servo1Angle); // D15
-                            setServoAngle(3, servo3Angle); // D19
+                            //setServoAngle(3, servo3Angle); // D19
 
                             if (servo1Angle == 0 && servo3Angle == 0) {
                                 goingUp = true;
