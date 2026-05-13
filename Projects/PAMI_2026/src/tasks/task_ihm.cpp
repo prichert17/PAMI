@@ -87,8 +87,8 @@ void Task_IHM(void *pvParameters) {
             }
         }
         else if (state == STATE_END) {
-            // Vert fixe - Match terminé
-            leds[0] = CRGB::Green;
+            // Blanc - Match terminé
+            leds[0] = CRGB::White;
         }
         else {
             // Par défaut éteint
