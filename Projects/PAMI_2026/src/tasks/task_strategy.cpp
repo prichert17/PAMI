@@ -18,6 +18,11 @@ static unsigned long matchStartTime = 0;
 static unsigned long tiretteTime = 0;
 static unsigned long delayStartTime = 0; // Pour tracker le timing du delay
 
+static const uint8_t SERVO_END_POS_2 = 125; // Servo sur D15
+static const uint8_t SERVO_END_POS_3 = 70;  // Servo sur D27
+static const uint8_t SERVO_END_STEP = 1;
+static const unsigned long SERVO_END_STEP_MS = 30;
+
 // Constantes de timing selon le mode debug
 static const unsigned long DEBUG_DELAY_MS = 3000;     // 3s en debug
 static const unsigned long NORMAL_DELAY_MS = 85000;   // 85s en normal
@@ -100,13 +105,13 @@ void Task_Strategy(void *pvParameters) {
             setModeManuel();
             // Mode manuel : servo pin 15 → 80°, servo pin 19 → 0°
             setServoAngle(2, 80);  // Servo 2 = pin 15
-            setServoAngle(1, 0);   // Servo 1 = pin 19
+            setServoAngle(3, 0);   // Servo 3 = pin 27
         } else if (!swMode && state == STATE_MANUAL) {
             // Retour en attente quand on désactive le switch manuel
             state = STATE_WAIT;
-            // Mode auto : servo pin 15 → 0°, servo pin 19 → 0°
+            // Mode auto : servo pin 15 → 0°, servo pin 27 → 0°
             setServoAngle(2, 0);  // Servo 2 = pin 15
-            setServoAngle(1, 0);    // Servo 1 = pin 19
+            setServoAngle(3, 0);    // Servo 3 = pin 27
         }
 
         // Mise à jour du mode debug en temps réel
@@ -162,8 +167,8 @@ void Task_Strategy(void *pvParameters) {
                     delayInitDone = true;
                 }
                 
-                // Vérifier si le délai est écoulé (3s ou 85s selon debug)
-                unsigned long delayMS = debugMode ? NORMAL_DELAY_MS : DEBUG_DELAY_MS;
+                // Vérifier si le délai est écoulé (3s en debug, 85s en normal)
+                unsigned long delayMS = debugMode ? DEBUG_DELAY_MS : NORMAL_DELAY_MS;
                 if ((millis() - delayStartTime) >= delayMS) {
                     state = STATE_GAME;
                     matchStartTime = millis();
@@ -197,6 +202,59 @@ void Task_Strategy(void *pvParameters) {
             }
 
             case STATE_END:
+                {
+                    static bool endSeqInitDone = false;
+                    static uint8_t servo1Angle = 0;
+                    static uint8_t servo3Angle = 0;
+                    static bool goingUp = true;
+                    static unsigned long lastServoStep = 0;
+
+                    if (!endSeqInitDone) {
+                        stopMotors();
+                        servo1Angle = 0;
+                        servo3Angle = 0;
+                        goingUp = true;
+                        lastServoStep = millis();
+                        setServoAngle(2, servo1Angle); // D15
+                        setServoAngle(3, servo3Angle); // D19
+                        endSeqInitDone = true;
+                        Serial.println("[STRATEGY] Séquence de fin de match démarrée");
+                    }
+
+                    if (millis() - lastServoStep >= SERVO_END_STEP_MS) {
+                        lastServoStep = millis();
+
+                        if (goingUp) {
+                            if (servo1Angle < SERVO_END_POS_2) {
+                                servo1Angle = min<uint8_t>(SERVO_END_POS_2, servo1Angle + SERVO_END_STEP);
+                            }
+                            if (servo3Angle < SERVO_END_POS_3) {
+                                servo3Angle = min<uint8_t>(SERVO_END_POS_3, servo3Angle + SERVO_END_STEP);
+                            }
+
+                            setServoAngle(2, servo1Angle); // D15
+                            setServoAngle(3, servo3Angle); // D19
+
+                            if (servo1Angle >= SERVO_END_POS_2 && servo3Angle >= SERVO_END_POS_3) {
+                                goingUp = false;
+                            }
+                        } else {
+                            if (servo1Angle > 0) {
+                                servo1Angle = (servo1Angle > SERVO_END_STEP) ? (servo1Angle - SERVO_END_STEP) : 0;
+                            }
+                            if (servo3Angle > 0) {
+                                servo3Angle = (servo3Angle > SERVO_END_STEP) ? (servo3Angle - SERVO_END_STEP) : 0;
+                            }
+
+                            setServoAngle(2, servo1Angle); // D15
+                            setServoAngle(3, servo3Angle); // D19
+
+                            if (servo1Angle == 0 && servo3Angle == 0) {
+                                goingUp = true;
+                            }
+                        }
+                    }
+                }
                 break;
 
             case STATE_MANUAL:
