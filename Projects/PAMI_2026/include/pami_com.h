@@ -95,7 +95,7 @@ inline void receiveFromSTM32() {
   static String rxBuffer = "";
   while (Serial2.available()) {
     char c = Serial2.read();
-    if (!debugMode) {
+    if (debugMode) {
       Serial.write(c); // Afficher les logs seulement si debug est désactivé
     }
     if (c == '\n') {

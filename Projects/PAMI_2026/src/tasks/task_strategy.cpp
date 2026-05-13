@@ -43,7 +43,7 @@ void Task_Strategy(void *pvParameters) {
     }
     
     // Vérifier le debug au démarrage (désactive les logs STM32)
-    debugMode = (digitalRead(PIN_SW_DEBUG) == LOW);
+    debugMode = (digitalRead(PIN_SW_DEBUG) == HIGH);
     if (debugMode) {
         Serial.println("[STRATEGY] Mode DEBUG: logs STM32 désactivés");
     }
@@ -92,7 +92,7 @@ void Task_Strategy(void *pvParameters) {
         
         // --- Relecture continue des switchs ---
         bool swMode = (digitalRead(PIN_SW_MODE) == LOW);
-        bool swDebug = (digitalRead(PIN_SW_DEBUG) == LOW);
+        bool swDebug = (digitalRead(PIN_SW_DEBUG) == HIGH);
         
         // Mise à jour de la couleur d'équipe en temps réel (prioritaire en mode WAIT)
         if (state == STATE_WAIT) {
@@ -115,7 +115,7 @@ void Task_Strategy(void *pvParameters) {
         }
 
         // Mise à jour du mode debug en temps réel
-        debugMode = (digitalRead(PIN_SW_DEBUG) == LOW);
+        debugMode = (digitalRead(PIN_SW_DEBUG) == HIGH);
 
         // --- Print continu de l'état (toutes les 500ms) ---
         if (millis() - lastPrint >= 500 || state != lastReportedState) {
