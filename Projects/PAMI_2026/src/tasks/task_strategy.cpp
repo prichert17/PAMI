@@ -163,7 +163,7 @@ void Task_Strategy(void *pvParameters) {
                 }
                 
                 // Vérifier si le délai est écoulé (3s ou 85s selon debug)
-                unsigned long delayMS = debugMode ? DEBUG_DELAY_MS : NORMAL_DELAY_MS;
+                unsigned long delayMS = debugMode ? NORMAL_DELAY_MS : DEBUG_DELAY_MS;
                 if ((millis() - delayStartTime) >= delayMS) {
                     state = STATE_GAME;
                     matchStartTime = millis();

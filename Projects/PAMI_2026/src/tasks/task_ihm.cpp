@@ -79,7 +79,7 @@ void Task_IHM(void *pvParameters) {
         else if (state == STATE_WAIT) {
             // Jaune ou Bleu selon équipe - Attente tirette
             // En mode debug, clignoter rapidement (0.7s on, 0.3s off)
-            if (debugMode) {
+            if (debugMode == false) {
                 CRGB teamLed = (teamColor == COLOR_YELLOW) ? CRGB::Yellow : CRGB::Blue;
                 leds[0] = debugBlinkState ? teamLed : CRGB::Black;
             } else {
