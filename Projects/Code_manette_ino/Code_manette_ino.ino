@@ -8,8 +8,8 @@
 // DÉFINITION DES PINS (Actionneurs supplémentaires)
 // ============================================
 #define PIN_SERVO_1   19
-#define PIN_SERVO_2   15
-#define PIN_SERVO_3   27  
+#define PIN_SERVO_2   27
+#define PIN_SERVO_3   15  
 #define PIN_LED_DATA  14
 
 // Moteurs directs ESP32
@@ -49,17 +49,17 @@ Servo servo3;
 
 // 1. Angles Cibles (Ce que tu demandes avec la manette)
 float targetServo1 = 63.0; 
-float targetServo2 = 170.0;
+float targetServo2 = 0.0;
 float targetServo3 = 0.0; 
 
 // 2. Angles Actuels (La position réelle lissée)
 float currentServo1 = 63.0; 
-float currentServo2 = 170.0;
+float currentServo2 = 0.0;
 float currentServo3 = 0.0;
 
 // 3. VITESSE MAX DES SERVOS (Le paramètre qui sauve ta batterie !)
-// 0.8 degré par boucle (20ms) = mouvement doux. Baisse à 0.5 si l'alim coupe encore.
-const float SERVO_MAX_STEP = 0.8; 
+// Réactivité augmentée pour éviter que la position réelle prenne du retard sur la cible.
+const float SERVO_MAX_STEP = 5.0; 
 
 // ============================================
 // CALLBACKS MANETTE
@@ -173,25 +173,25 @@ void loop() {
 
         // --- MODIFICATION DES CIBLES SERVOS 1 & 2 (Main Gauche) ---
         if (ctl->l1()) { // LT
-            targetServo1 -= 2.0; 
-            targetServo2 += 2.0; // Réglé à 2.0 pour éviter les saccades
+          targetServo1 += 2.0; 
+          targetServo2 -= 2.0; 
         }
-        if (ctl->brake() > JOYSTICK_DEADZONE) { // LB (Correction de la gâchette !)
-            targetServo1 += 2.0;
-            targetServo2 -= 2.0; 
+        if (ctl->brake() > JOYSTICK_DEADZONE) { // LB 
+          targetServo1 -= 2.0;
+          targetServo2 += 2.0; 
         }
 
         // --- MODIFICATION DE LA CIBLE SERVO 3 (Main Droite) ---
         if (ctl->r1()) { // RT 
             targetServo3 -= 2.0; 
         }
-        if (ctl->throttle() > JOYSTICK_DEADZONE) { // RB (Correction de la gâchette !)
+        if (ctl->throttle() > JOYSTICK_DEADZONE) { // RB 
             targetServo3 += 2.0;
         }
 
         // Sécurité Butées sur les Cibles
         targetServo1 = constrain(targetServo1, 63.0, 180.0);
-        targetServo2 = constrain(targetServo2, 0.0, 170.0);
+        targetServo2 = constrain(targetServo2, 0.0, 180.0);
         targetServo3 = constrain(targetServo3, 0.0, 180.0);
 
         // ========================================================
@@ -262,7 +262,7 @@ void loop() {
         float target_m2 = (current_smoothed_rx - adjusted_ly) * current_max_speed;
 
         // CORRECTION MATÉRIELLE
-        target_m1 = target_m1 * 0.83f; 
+        target_m1 = target_m1; 
 
         target_m1 = constrain(target_m1, -current_max_speed, current_max_speed);
         target_m2 = constrain(target_m2, -current_max_speed, current_max_speed);
@@ -279,6 +279,6 @@ void loop() {
       }
     }
   }
-  
+  receiveFromSTM32();
   delay(20);  // ~50Hz
 }
