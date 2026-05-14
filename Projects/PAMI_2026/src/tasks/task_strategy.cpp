@@ -44,8 +44,8 @@ struct RouteWaypoint {
 };
 
 static const RouteWaypoint matchRoute_base[] = {
-    {450.0f, 600.0f, "Tout droit"},
-    {1200.0f, 600.0f, "Angle a droite"},
+    {500.0f, 550.0f, "Tout droit"},
+    {1200.0f, 500.0f, "Tourne"},
     //{0.0f, 0.0f, "Retour a l'origine"}
 };
 
@@ -87,9 +87,9 @@ static void sendCurrentWaypoint() {
 }
 
 // Constantes de timing selon le mode debug
-static const unsigned long DEBUG_DELAY_MS = 3000;     // 3s en debug
+static const unsigned long DEBUG_DELAY_MS = 5000;     // 5s en debug
 static const unsigned long NORMAL_DELAY_MS = 85000;   // 85s en normal
-static const unsigned long DEBUG_MATCH_DURATION_MS = 17000;   // 17s en debug
+static const unsigned long DEBUG_MATCH_DURATION_MS = 19000;   // 19s en debug
 static const unsigned long NORMAL_MATCH_DURATION_MS = 99000;  // 99s en normal 
 
 void Task_Strategy(void *pvParameters) {
@@ -208,23 +208,6 @@ void Task_Strategy(void *pvParameters) {
                     tirette_mise = true;
                 } else if (digitalRead(PIN_TIRETTE) == HIGH && tirette_mise) {
                     tiretteTime = millis();
-                    
-                    // Vérifier que les coordonnées ont bien été reset par la STM32
-                    xSemaphoreTake(xPoseMutex, portMAX_DELAY);
-                    float resetX = current_x;
-                    float resetY = current_y;
-                    xSemaphoreGive(xPoseMutex);
-                    
-                    Serial.printf("[STRATEGY] Vérification du reset STM32: current_x=%.0f, current_y=%.0f\n", 
-                                  resetX, resetY);
-                    Serial.printf("[STRATEGY] Attendu: x=%.0f, y=%.0f\n", ROBOT_INIT_X, ROBOT_INIT_Y);
-                    
-                    if (abs(resetX - ROBOT_INIT_X) < 10 && abs(resetY - ROBOT_INIT_Y) < 10) {
-                        Serial.println("[STRATEGY] ✓ Coordonnées correctement reset par STM32");
-                    } else {
-                        Serial.println("[STRATEGY] ⚠ ALERTE: Coordonnées ne correspondent pas!");
-                    }
-                    
                     state = STATE_DELAY;
                     Serial.println("[STRATEGY] Tirette retirée! Attente du chrono...");       
                 }
@@ -244,6 +227,19 @@ void Task_Strategy(void *pvParameters) {
                     Serial.println("[STRATEGY] Passage en mode AUTO...");
                     setModeAuto();
                     vTaskDelay(pdMS_TO_TICKS(500)); // Attendre confirmation
+                    
+                    // Vérification minimale du reset
+                    xSemaphoreTake(xPoseMutex, portMAX_DELAY);
+                    float verifyX = current_x;
+                    float verifyY = current_y;
+                    xSemaphoreGive(xPoseMutex);
+                    
+                    if (abs(verifyX - ROBOT_INIT_X) < 10 && abs(verifyY - ROBOT_INIT_Y) < 10) {
+                        Serial.printf("[STRATEGY] ✓ Reset OK: (%.0f, %.0f)\n", verifyX, verifyY);
+                    } else {
+                        Serial.printf("[STRATEGY] ⚠ Reset MISMATCH: got (%.0f, %.0f), expected (%.0f, %.0f)\n", 
+                                      verifyX, verifyY, ROBOT_INIT_X, ROBOT_INIT_Y);
+                    }
                     
                     delayStartTime = millis();
                     delayInitDone = true;
