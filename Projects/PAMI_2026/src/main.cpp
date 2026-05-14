@@ -18,10 +18,18 @@
 // ============================================
 // CONFIGURATION D'ORIGINE DU ROBOT
 // ============================================
-// Coordonnées initiales (ajuster selon position de départ)
-const float ROBOT_INIT_X = 0.0f;   // Position X initiale (mm)
-const float ROBOT_INIT_Y = 0.0f;   // Position Y initiale (mm)
-const float ROBOT_INIT_Z = 0.0f;    // Orientation initiale (degrés)
+// Dimensions du terrain (mm)
+#define TERRAIN_SIZE_X 3000
+#define TERRAIN_SIZE_Y 2000
+
+// Coordonnées initiales de base (pour couleur YELLOW)
+const float ROBOT_BASE_X = 450.0f;   // Position X initiale (mm)
+const float ROBOT_BASE_Y = 160.0f;   // Position Y initiale (mm)
+const float ROBOT_INIT_Z = 90.0f;    // Orientation initiale (degrés)
+
+// Variables pour coordonnées initiales ajustées selon la couleur
+float ROBOT_INIT_X = ROBOT_BASE_X;
+float ROBOT_INIT_Y = ROBOT_BASE_Y;
 
 bool actionneurON = false; // Flag pour activer les actionneurs de fin de match
 // --- VARIABLES GLOBALES SYSTÈME ---
@@ -57,6 +65,17 @@ void setup() {
 
     // Lecture couleur d'équipe au démarrage
     teamColor = (digitalRead(PIN_SW_COLOR) == LOW) ? COLOR_BLUE : COLOR_YELLOW;
+    
+    // Ajuster les coordonnées initiales selon la couleur
+    if (teamColor == COLOR_BLUE) {
+        ROBOT_INIT_X = TERRAIN_SIZE_X - ROBOT_BASE_X;
+        ROBOT_INIT_Y = ROBOT_BASE_Y;
+    } else {
+        ROBOT_INIT_X = ROBOT_BASE_X;
+        ROBOT_INIT_Y = ROBOT_BASE_Y;
+    }
+    Serial.printf("[MAIN] Couleur: %s | Coordonnées initiales: (%.0f, %.0f)\n", 
+                  (teamColor == COLOR_BLUE) ? "BLEU" : "JAUNE", ROBOT_INIT_X, ROBOT_INIT_Y);
 
     // 3. Création des Objets de Synchronisation
     xPoseMutex = xSemaphoreCreateMutex();

@@ -7,6 +7,10 @@
 #include "actuators.h"
 #include "tofs.h"
 
+// Dimensions du terrain
+#define TERRAIN_SIZE_X 3000
+#define TERRAIN_SIZE_Y 2000
+
 // Variables globales
 extern float current_x, current_y, current_theta;
 extern float target_x, target_y;
@@ -14,6 +18,15 @@ extern bool mode_auto;
 extern bool debugMode;
 extern bool actionneurON;
 extern SemaphoreHandle_t xPoseMutex;
+
+// Fonction helper pour calculer les coordonnées symétriques selon la couleur
+static float symmetrizeX(float x) {
+    return (teamColor == COLOR_BLUE) ? (TERRAIN_SIZE_X - x) : x;
+}
+
+static float symmetrizeY(float y) {
+    return y;
+}
 
 static unsigned long matchStartTime = 0;
 static unsigned long tiretteTime = 0;
@@ -30,15 +43,36 @@ struct RouteWaypoint {
     const char* label;
 };
 
-static const RouteWaypoint matchRoute[] = {
-    {1000.0f, 0.0f, "Tout droit"},
-    {1000.0f, 1000.0f, "Angle a droite"},
-    {0.0f, 0.0f, "Retour a l'origine"}
+static const RouteWaypoint matchRoute_base[] = {
+    {450.0f, 600.0f, "Tout droit"},
+    {1200.0f, 600.0f, "Angle a droite"},
+    //{0.0f, 0.0f, "Retour a l'origine"}
 };
 
-static const uint8_t MATCH_ROUTE_COUNT = sizeof(matchRoute) / sizeof(matchRoute[0]);
+static const uint8_t MATCH_ROUTE_COUNT = sizeof(matchRoute_base) / sizeof(matchRoute_base[0]);
+
+// Tableau des waypoints ajustés selon la couleur
+static RouteWaypoint matchRoute[2];
+
 static uint8_t currentRouteIndex = 0;
 static bool routeFinished = false;
+
+// Fonction pour initialiser les waypoints en fonction de la couleur
+static void initializeRoute() {
+    for (int i = 0; i < MATCH_ROUTE_COUNT; i++) {
+        matchRoute[i].x = symmetrizeX(matchRoute_base[i].x);
+        matchRoute[i].y = symmetrizeY(matchRoute_base[i].y);
+        matchRoute[i].label = matchRoute_base[i].label;
+    }
+    Serial.printf("[STRATEGY] Route initialisée pour couleur %s\n", 
+                  (teamColor == COLOR_BLUE) ? "BLEU" : "JAUNE");
+    if (teamColor == COLOR_BLUE) {
+        for (int i = 0; i < MATCH_ROUTE_COUNT; i++) {
+            Serial.printf("[STRATEGY] Waypoint %d: (%.0f, %.0f) - %s\n", 
+                          i, matchRoute[i].x, matchRoute[i].y, matchRoute[i].label);
+        }
+    }
+}
 
 static void sendCurrentWaypoint() {
     if (currentRouteIndex < MATCH_ROUTE_COUNT) {
@@ -64,6 +98,9 @@ void Task_Strategy(void *pvParameters) {
     // Init servos et moteurs
     initServos();
     initMotors();
+    
+    // Initialiser la route en fonction de la couleur
+    initializeRoute();
 
     // Vérifier le mode au démarrage
     if (digitalRead(PIN_SW_MODE) == LOW) {
@@ -171,6 +208,23 @@ void Task_Strategy(void *pvParameters) {
                     tirette_mise = true;
                 } else if (digitalRead(PIN_TIRETTE) == HIGH && tirette_mise) {
                     tiretteTime = millis();
+                    
+                    // Vérifier que les coordonnées ont bien été reset par la STM32
+                    xSemaphoreTake(xPoseMutex, portMAX_DELAY);
+                    float resetX = current_x;
+                    float resetY = current_y;
+                    xSemaphoreGive(xPoseMutex);
+                    
+                    Serial.printf("[STRATEGY] Vérification du reset STM32: current_x=%.0f, current_y=%.0f\n", 
+                                  resetX, resetY);
+                    Serial.printf("[STRATEGY] Attendu: x=%.0f, y=%.0f\n", ROBOT_INIT_X, ROBOT_INIT_Y);
+                    
+                    if (abs(resetX - ROBOT_INIT_X) < 10 && abs(resetY - ROBOT_INIT_Y) < 10) {
+                        Serial.println("[STRATEGY] ✓ Coordonnées correctement reset par STM32");
+                    } else {
+                        Serial.println("[STRATEGY] ⚠ ALERTE: Coordonnées ne correspondent pas!");
+                    }
+                    
                     state = STATE_DELAY;
                     Serial.println("[STRATEGY] Tirette retirée! Attente du chrono...");       
                 }
