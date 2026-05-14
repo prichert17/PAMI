@@ -153,11 +153,9 @@ int main(void)
     HAL_TIM_Base_Start_IT(&htim6);
     HAL_TIM_Base_Start_IT(&htim15);
     HAL_TIM_Base_Start_IT(&htim17);
-        // PID plus conservatif pour stabilité (peut être ajusté depuis UART)
-        asserv.set_PID(6.0, 6.0, 4.0);
 
     // Configuration PID pour l'asservissement en position
-    asserv.set_PID(10, 15, 15.0);
+    asserv.set_PID(6.0, 6.0, 4.0);
 
     // Message de démarrage
     serial.send("\r\n=== PAMI STM32 ===\r\n");
