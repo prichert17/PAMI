@@ -194,14 +194,14 @@ void loop_tof() {
         float tofX = robotX + tofOffsets[i][0] * cosTheta - tofOffsets[i][1] * sinTheta;
         float tofY = robotY + tofOffsets[i][0] * sinTheta + tofOffsets[i][1] * cosTheta;
 
-        // Lire uniquement la ligne du milieu et la vraie ligne du bas pour l'évitement
-        // Ligne du milieu : indices 32-39
-        // Vraie ligne du bas : indices 0-7
+        // Lire uniquement les 2 lignes du milieu pour l'évitement
+        // Ligne du milieu haut : indices 24-31
+        // Ligne du milieu bas : indices 32-39
         for(int zone = 0; zone < 8; zone++){
             float minDist = 500.0f; // Initialiser avec une grande distance
             
-            // Vérifier uniquement les 2 lignes utiles
-          int lineIndices[2] = {32, 0}; // Milieu + bas réel
+            // Vérifier uniquement les 2 lignes du milieu
+            int lineIndices[2] = {24, 32}; // Milieu haut + milieu bas
             
             for(int lineIdx = 0; lineIdx < 2; lineIdx++){
               int j = lineIndices[lineIdx] + zone;

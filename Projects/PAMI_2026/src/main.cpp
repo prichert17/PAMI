@@ -66,6 +66,12 @@ void setup() {
     // Lecture couleur d'équipe au démarrage
     teamColor = (digitalRead(PIN_SW_COLOR) == LOW) ? COLOR_BLUE : COLOR_YELLOW;
     
+    // Lecture mode debug au démarrage
+    debugMode = (digitalRead(PIN_SW_DEBUG) == HIGH);
+    
+    // Initialiser actionneurON selon le mode debug (false si debug, true sinon)
+    actionneurON = !debugMode;
+    
     // Ajuster les coordonnées initiales selon la couleur
     if (teamColor == COLOR_BLUE) {
         ROBOT_INIT_X = TERRAIN_SIZE_X - ROBOT_BASE_X;
