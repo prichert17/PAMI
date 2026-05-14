@@ -150,8 +150,8 @@ void Asserv_Position::update_asserv(){
     double dy = target_position.x_y.y - current_pos.x_y.y;
     double dist_to_target = sqrt(dx*dx + dy*dy);
 
-    // Arrivé à destination -> stop
-    if (dist_to_target < 5.0) {  // 5mm de précision (était 20mm)
+    // Arrivé à destination -> stop (tolérance augmentée pour éviter oscillations finales)
+    if (dist_to_target < 50.0) {  // 50mm de tolérance
         command = Vector2DAndRotation(0, 0, 0);
         set_motors_power_relative(command);
         return;
@@ -182,6 +182,11 @@ void Asserv_Position::update_asserv(){
     double threshold_enter = 0.4;  // ~23° pour passer en rotation
     double threshold_exit = 0.15;  // ~9° pour sortir de rotation
 
+    // Zone morte angulaire quand proche de la destination (évite oscillations)
+    if (dist_to_target < 200.0 && fabs(angle_error) < 0.08) {
+        angle_error = 0.0;  // Ignorer petites corrections proches de la cible
+    }
+
     if (fabs(angle_error) > threshold_enter) in_rotation_mode = true;
     else if (fabs(angle_error) < threshold_exit) in_rotation_mode = false;
 
@@ -192,7 +197,13 @@ void Asserv_Position::update_asserv(){
         double min_cmd = 100.0;
         if (fabs(cmd_rot) < min_cmd && fabs(angle_error) > 0.05)
             cmd_rot = (cmd_rot > 0) ? min_cmd : -min_cmd;
-        command.teta = cmd_rot * 3;
+        
+        // Couper la rotation quand très proche (moins de 150mm) et angle quasi bon
+        if (dist_to_target < 150.0 && fabs(angle_error) < 0.15) {
+            command.teta = 0.0;
+        } else {
+            command.teta = cmd_rot * 3;
+        }
         command.x_y.x = 0;
         // Reset du boost en ligne droite dès qu'on entre en rotation
         straight_line_boost = 0.0;
