@@ -194,17 +194,27 @@ void loop_tof() {
         float tofX = robotX + tofOffsets[i][0] * cosTheta - tofOffsets[i][1] * sinTheta;
         float tofY = robotY + tofOffsets[i][0] * sinTheta + tofOffsets[i][1] * cosTheta;
 
-        // Lire la ligne du milieu seulement (indice 32-39 = ligne 4 de matrice 8x8)
+        // Lire toutes les lignes de la matrice 8x8 pour l'évitement
+        // On garde, pour chaque zone, la distance minimale détectée sur les 8 lignes
         for(int zone = 0; zone < 8; zone++){
-            int j = 32 + zone; // Indice dans la matrice : 32-39
+            float minDist = 500.0f; // Initialiser avec une grande distance
             
-            // Statut 5 ou 9 = Mesure valide
-            if(measurementData.target_status[j] == 5 || measurementData.target_status[j] == 9){
-              float dist = measurementData.distance_mm[j];
-              
-              // FILTRER : ne traiter que les obstacles < 50cm (500mm)
-              if(dist > 0 && dist < 500) {
-                distances_tof[i][zone] = dist;
+            // Vérifier les 8 lignes de la matrice
+            int lineIndices[8] = {0, 8, 16, 24, 32, 40, 48, 56}; // Indices de début de chaque ligne
+            
+            for(int lineIdx = 0; lineIdx < 8; lineIdx++){
+              int j = lineIndices[lineIdx] + zone;
+              if(measurementData.target_status[j] == 5 || measurementData.target_status[j] == 9){
+                float dist = measurementData.distance_mm[j];
+                if(dist > 0 && dist < 500) {
+                  minDist = min(minDist, dist);
+                }
+              }
+            }
+            
+            // Utiliser la distance minimale trouvée
+            if(minDist < 500.0f) {
+              distances_tof[i][zone] = minDist;
                 
                 // Calculer l'angle absolu de cette zone dans le repère terrain
                 float zoneAngle = getTOFZoneAngle(i, zone);  // Angle relatif au robot (en degrés)
@@ -212,8 +222,8 @@ void loop_tof() {
                 float obstacleAngleRad = obstacleAngleDeg * PI / 180.0f;  // Convertir en radians
                 
                 // Position de l'obstacle en repère absolu
-                float absX = tofX + dist * cos(obstacleAngleRad);
-                float absY = tofY + dist * sin(obstacleAngleRad);
+                float absX = tofX + minDist * cos(obstacleAngleRad);
+                float absY = tofY + minDist * sin(obstacleAngleRad);
                 
                 obstacleX[i][zone] = absX;
                 obstacleY[i][zone] = absY;
@@ -222,12 +232,11 @@ void loop_tof() {
                 Obstacle obs;
                 obs.x = absX;
                 obs.y = absY;
-                obs.distance = dist;
+                obs.distance = minDist;
                 obs.angle = zoneAngle;
                 obs.sensor = i;
                 obs.zone = zone;
                 detectedObstacles.push_back(obs);
-              }
             }
         }
 
