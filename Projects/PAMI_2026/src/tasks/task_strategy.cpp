@@ -31,8 +31,8 @@ struct RouteWaypoint {
 };
 
 static const RouteWaypoint matchRoute[] = {
-    {10.0f, 0.0f, "Tout droit"},
-    {10.0f, 10.0f, "Angle a droite"},
+    {1000.0f, 0.0f, "Tout droit"},
+    {1000.0f, 1000.0f, "Angle a droite"},
     {0.0f, 0.0f, "Retour a l'origine"}
 };
 
@@ -87,13 +87,12 @@ void Task_Strategy(void *pvParameters) {
         
         bool tofProximityDetected = false;
         
-        // Vérifier TOUTES les zones pour détecter un obstacle < 10cm
-        for (int i = 0; i < 3 && !tofProximityDetected; i++) {
-            for (int j = 0; j < 8; j++) {
-                if (distances_tof[i][j] > 0 && distances_tof[i][j] < 100) { // <10cm = 100mm
-                    tofProximityDetected = true;
-                    break;
-                }
+        // Vérifier SEULEMENT le capteur TOF central (indice 2) sur les lignes du milieu/bas
+        int centralSensor = 2; // TOF3 = Centre
+        for (int j = 0; j < 8; j++) {
+            if (distances_tof[centralSensor][j] > 0 && distances_tof[centralSensor][j] < 100) { // <10cm = 100mm
+                tofProximityDetected = true;
+                break;
             }
         }
         

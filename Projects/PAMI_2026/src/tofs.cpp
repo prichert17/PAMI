@@ -194,15 +194,16 @@ void loop_tof() {
         float tofX = robotX + tofOffsets[i][0] * cosTheta - tofOffsets[i][1] * sinTheta;
         float tofY = robotY + tofOffsets[i][0] * sinTheta + tofOffsets[i][1] * cosTheta;
 
-        // Lire toutes les lignes de la matrice 8x8 pour l'évitement
-        // On garde, pour chaque zone, la distance minimale détectée sur les 8 lignes
+        // Lire uniquement la ligne du milieu et la vraie ligne du bas pour l'évitement
+        // Ligne du milieu : indices 32-39
+        // Vraie ligne du bas : indices 0-7
         for(int zone = 0; zone < 8; zone++){
             float minDist = 500.0f; // Initialiser avec une grande distance
             
-            // Vérifier les 8 lignes de la matrice
-            int lineIndices[8] = {0, 8, 16, 24, 32, 40, 48, 56}; // Indices de début de chaque ligne
+            // Vérifier uniquement les 2 lignes utiles
+          int lineIndices[2] = {32, 0}; // Milieu + bas réel
             
-            for(int lineIdx = 0; lineIdx < 8; lineIdx++){
+            for(int lineIdx = 0; lineIdx < 2; lineIdx++){
               int j = lineIndices[lineIdx] + zone;
               if(measurementData.target_status[j] == 5 || measurementData.target_status[j] == 9){
                 float dist = measurementData.distance_mm[j];
