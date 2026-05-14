@@ -23,6 +23,7 @@ const float ROBOT_INIT_X = 0.0f;   // Position X initiale (mm)
 const float ROBOT_INIT_Y = 0.0f;   // Position Y initiale (mm)
 const float ROBOT_INIT_Z = 0.0f;    // Orientation initiale (degrés)
 
+bool actionneurON = false; // Flag pour activer les actionneurs de fin de match
 // --- VARIABLES GLOBALES SYSTÈME ---
 // Définition du Mutex (déclaré extern dans types.h)
 SemaphoreHandle_t xPoseMutex = NULL;

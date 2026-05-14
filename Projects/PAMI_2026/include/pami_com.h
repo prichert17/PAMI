@@ -44,6 +44,8 @@ inline void sendMotors(int16_t m1, int16_t m2) {
 }
 
 inline void sendPosition(float x, float y) {
+  target_x = x;
+  target_y = y;
   char buf[16];
   snprintf(buf, sizeof(buf), "X:%.1f", x);
   Serial2.println(buf);

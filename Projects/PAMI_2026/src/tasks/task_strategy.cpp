@@ -12,6 +12,7 @@ extern float current_x, current_y, current_theta;
 extern float target_x, target_y;
 extern bool mode_auto;
 extern bool debugMode;
+extern bool actionneurON;
 extern SemaphoreHandle_t xPoseMutex;
 
 static unsigned long matchStartTime = 0;
@@ -22,6 +23,34 @@ static const uint8_t SERVO_END_POS_2 = 80; // Servo sur D15 (125° sinon)
 static const uint8_t SERVO_END_POS_3 = 70;  // Servo sur D27
 static const uint8_t SERVO_END_STEP = 1;
 static const unsigned long SERVO_END_STEP_MS = 30;
+
+struct RouteWaypoint {
+    float x;
+    float y;
+    const char* label;
+};
+
+static const RouteWaypoint matchRoute[] = {
+    {10.0f, 0.0f, "Tout droit"},
+    {10.0f, 10.0f, "Angle a droite"},
+    {0.0f, 0.0f, "Retour a l'origine"}
+};
+
+static const uint8_t MATCH_ROUTE_COUNT = sizeof(matchRoute) / sizeof(matchRoute[0]);
+static uint8_t currentRouteIndex = 0;
+static bool routeFinished = false;
+
+static void sendCurrentWaypoint() {
+    if (currentRouteIndex < MATCH_ROUTE_COUNT) {
+        sendPosition(matchRoute[currentRouteIndex].x, matchRoute[currentRouteIndex].y);
+        Serial.printf("[STRATEGY] Cible %u/%u: %s (X=%.1f, Y=%.1f)\n",
+                      currentRouteIndex + 1,
+                      MATCH_ROUTE_COUNT,
+                      matchRoute[currentRouteIndex].label,
+                      matchRoute[currentRouteIndex].x,
+                      matchRoute[currentRouteIndex].y);
+    }
+}
 
 // Constantes de timing selon le mode debug
 static const unsigned long DEBUG_DELAY_MS = 3000;     // 3s en debug
@@ -185,8 +214,24 @@ void Task_Strategy(void *pvParameters) {
                 
                 // Envoyer la position cible une seule fois au début
                 if (!gameStartSent) {
-                    sendPosition(target_x, target_y);
+                    currentRouteIndex = 0;
+                    routeFinished = false;
+                    sendCurrentWaypoint();
                     gameStartSent = true;
+                }
+
+                if (!routeFinished && checkPosition()) {
+                    if (currentRouteIndex + 1 < MATCH_ROUTE_COUNT) {
+                        currentRouteIndex++;
+                        sendCurrentWaypoint();
+                    } else {
+                        routeFinished = true;
+                        stopMotors();
+                        state = STATE_END;
+                        gameStartSent = false;
+                        Serial.println("[STRATEGY] Route terminee");
+                        break;
+                    }
                 }
                 
                 // Fin de match ? (18s ou 99s selon debug)
@@ -195,6 +240,7 @@ void Task_Strategy(void *pvParameters) {
                     state = STATE_END;
                     stopMotors();
                     gameStartSent = false; // Réinitialiser pour la prochaine partie
+                    routeFinished = false;
                     Serial.println("[STRATEGY] FIN");
                 }
                 //Serial.println("[STRATEGY] GO!");
@@ -208,56 +254,57 @@ void Task_Strategy(void *pvParameters) {
                     static uint8_t servo3Angle = 0;
                     static bool goingUp = true;
                     static unsigned long lastServoStep = 0;
-
-                    if (!endSeqInitDone) {
-                        stopMotors();
-                        servo1Angle = 0;
-                        servo3Angle = 0;
-                        goingUp = true;
-                        lastServoStep = millis();
-                        setServoAngle(2, servo1Angle); // D15
-                        //setServoAngle(3, servo3Angle); // D19
-                        endSeqInitDone = true;
-                        Serial.println("[STRATEGY] Séquence de fin de match démarrée");
-                    }
-
-                    if (millis() - lastServoStep >= SERVO_END_STEP_MS) {
-                        lastServoStep = millis();
-
-                        if (goingUp) {
-                            if (servo1Angle < SERVO_END_POS_2) {
-                                servo1Angle = min<uint8_t>(SERVO_END_POS_2, servo1Angle + SERVO_END_STEP);
-                            }
-                            /*
-                            if (servo3Angle < SERVO_END_POS_3) {
-                                servo3Angle = min<uint8_t>(SERVO_END_POS_3, servo3Angle + SERVO_END_STEP);
-                            }*/
-
+                    if (actionneurON){
+                        if (!endSeqInitDone) {
+                            stopMotors();
+                            servo1Angle = 0;
+                            servo3Angle = 0;
+                            goingUp = true;
+                            lastServoStep = millis();
                             setServoAngle(2, servo1Angle); // D15
                             //setServoAngle(3, servo3Angle); // D19
+                            endSeqInitDone = true;
+                            Serial.println("[STRATEGY] Séquence de fin de match démarrée");
+                        }
 
-                            //if (servo1Angle >= SERVO_END_POS_2 && servo3Angle >= SERVO_END_POS_3) {
-                            if (servo1Angle >= SERVO_END_POS_2) {
-                                goingUp = false;
-                            }
-                        } else {
-                            if (servo1Angle > 0) {
-                                servo1Angle = (servo1Angle > SERVO_END_STEP) ? (servo1Angle - SERVO_END_STEP) : 0;
-                            }
-                            /*
-                            if (servo3Angle > 0) {
-                                servo3Angle = (servo3Angle > SERVO_END_STEP) ? (servo3Angle - SERVO_END_STEP) : 0;
-                            }
-                            */
+                        if (millis() - lastServoStep >= SERVO_END_STEP_MS) {
+                            lastServoStep = millis();
 
-                            setServoAngle(2, servo1Angle); // D15
-                            //setServoAngle(3, servo3Angle); // D19
+                            if (goingUp) {
+                                if (servo1Angle < SERVO_END_POS_2) {
+                                    servo1Angle = min<uint8_t>(SERVO_END_POS_2, servo1Angle + SERVO_END_STEP);
+                                }
+                                /*
+                                if (servo3Angle < SERVO_END_POS_3) {
+                                    servo3Angle = min<uint8_t>(SERVO_END_POS_3, servo3Angle + SERVO_END_STEP);
+                                }*/
 
-                            if (servo1Angle == 0 && servo3Angle == 0) {
-                                goingUp = true;
+                                setServoAngle(2, servo1Angle); // D15
+                                //setServoAngle(3, servo3Angle); // D19
+
+                                //if (servo1Angle >= SERVO_END_POS_2 && servo3Angle >= SERVO_END_POS_3) {
+                                if (servo1Angle >= SERVO_END_POS_2) {
+                                    goingUp = false;
+                                }
+                            } else {
+                                if (servo1Angle > 0) {
+                                    servo1Angle = (servo1Angle > SERVO_END_STEP) ? (servo1Angle - SERVO_END_STEP) : 0;
+                                }
+                                /*
+                                if (servo3Angle > 0) {
+                                    servo3Angle = (servo3Angle > SERVO_END_STEP) ? (servo3Angle - SERVO_END_STEP) : 0;
+                                }
+                                */
+
+                                setServoAngle(2, servo1Angle); // D15
+                                //setServoAngle(3, servo3Angle); // D19
+
+                                if (servo1Angle == 0 && servo3Angle == 0) {
+                                    goingUp = true;
+                                }
                             }
                         }
-                    }
+                }
                 }
                 break;
 

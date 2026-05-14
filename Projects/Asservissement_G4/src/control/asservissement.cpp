@@ -1,5 +1,18 @@
 #include "asservissement.hpp"
 
+// Paramètres stricts anti-patinage
+namespace {
+constexpr double kWheelCmdMax = 700.0;              // borne stricte PWM-like
+constexpr double kRotCouplingStart = 180.0;         // commencer réduction de linéaire
+constexpr double kRotCouplingMax = 600.0;           // rotation à partir de laquelle la réduction est maximale
+constexpr double kLinearReductionAtMaxRot = 0.35;   // fraction à réduire au max
+
+// Seuils de détection de patinage basés sur vitesses mesurées (mm/s)
+constexpr double kSlipDiffThreshold = 140.0;        // différence entre vitesses mesurées
+constexpr double kSlipMinFast = 120.0;              // la roue rapide doit dépasser ceci
+constexpr double kSlipMinScale = 0.50;              // échelle minimale appliquée aux commandes
+}
+
 Asserv::Asserv(Odometry *odometry, std::array<Wheel, 3> *wheels):
     odometry(odometry),
     wheels(wheels),
@@ -51,13 +64,44 @@ void Asserv::set_motors_power_relative(Vector2DAndRotation power){
     double cmd_linear = power.x_y.x;  // Avance/Recule
     double cmd_rot    = power.teta;   // Tourne
 
-    // Roue 0 = Gauche (M1), Roue 1 = Droite (M2)
-    
-    // Roue Gauche = V - W
+    // Réduction progressive du linéaire si rotation forte (préserve la rapidité en conduite normale)
+    double rot_abs = fabs(cmd_rot);
+    if (rot_abs > kRotCouplingStart) {
+        double ratio = (rot_abs - kRotCouplingStart) / (kRotCouplingMax - kRotCouplingStart);
+        if (ratio > 1.0) ratio = 1.0;
+        double linear_scale = 1.0 - kLinearReductionAtMaxRot * ratio;
+        if (linear_scale < 0.0) linear_scale = 0.0;
+        cmd_linear *= linear_scale;
+    }
+
+    // Mixage roues
     double speed_left  = cmd_linear - cmd_rot;
-    // Roue Droite = V + W
     double speed_right = cmd_linear + cmd_rot;
 
+    // Limitation homothétique (évite clamp roue par roue qui favorise le patinage)
+    double max_abs_cmd = fabs(speed_left);
+    if (fabs(speed_right) > max_abs_cmd) max_abs_cmd = fabs(speed_right);
+    if (max_abs_cmd > kWheelCmdMax) {
+        double scale = kWheelCmdMax / max_abs_cmd;
+        speed_left *= scale;
+        speed_right *= scale;
+    }
+
+    // Détection de patinage: si la différence de vitesses mesurées est grande
+    // alors qu'une roue est rapide, on réduit les commandes pour retrouver l'adhérence.
+    float v_left_meas = (*wheels)[0].get_speed() * CONSTANTS::WHEEL_RADIUS; // mm/s
+    float v_right_meas = (*wheels)[1].get_speed() * CONSTANTS::WHEEL_RADIUS; // mm/s
+    double abs_diff = fabs((double)v_left_meas - (double)v_right_meas);
+    double fast = std::max(fabs((double)v_left_meas), fabs((double)v_right_meas));
+    double slow = std::min(fabs((double)v_left_meas), fabs((double)v_right_meas));
+    if (abs_diff > kSlipDiffThreshold && fast > kSlipMinFast && slow < fast * 0.7) {
+        double scale = (slow + 40.0) / (fast + 40.0);
+        if (scale < kSlipMinScale) scale = kSlipMinScale;
+        speed_left *= scale;
+        speed_right *= scale;
+    }
+
+    // Appliquer aux moteurs
     (*wheels)[0].set_motor_power((int32_t)speed_left);
     (*wheels)[1].set_motor_power((int32_t)speed_right);
 }
@@ -181,7 +225,7 @@ void Asserv_Position::update_asserv(){
 
     // Rampe d'accélération (limite variation par cycle)
     static Vector2DAndRotation last_cmd(0, 0, 0);
-    double max_delta = 20.0;  // Max variation par cycle
+    double max_delta = 12.0;  // Max variation par cycle (plus conservatif pour éviter décrochement)
     if (command.x_y.x - last_cmd.x_y.x > max_delta) command.x_y.x = last_cmd.x_y.x + max_delta;
     if (command.x_y.x - last_cmd.x_y.x < -max_delta) command.x_y.x = last_cmd.x_y.x - max_delta;
     if (command.teta - last_cmd.teta > max_delta) command.teta = last_cmd.teta + max_delta;
@@ -207,8 +251,40 @@ void Asserv_Position::set_motors_power_relative(Vector2DAndRotation power){
     double cmd_linear = power.x_y.x;
     double cmd_rot    = power.teta;
 
+    // Réduction progressive du linéaire si rotation forte
+    double rot_abs = fabs(cmd_rot);
+    if (rot_abs > kRotCouplingStart) {
+        double ratio = (rot_abs - kRotCouplingStart) / (kRotCouplingMax - kRotCouplingStart);
+        if (ratio > 1.0) ratio = 1.0;
+        double linear_scale = 1.0 - kLinearReductionAtMaxRot * ratio;
+        if (linear_scale < 0.0) linear_scale = 0.0;
+        cmd_linear *= linear_scale;
+    }
+
     double speed_left  = cmd_linear - cmd_rot;
     double speed_right = cmd_linear + cmd_rot;
+
+    // Limitation homothétique
+    double max_abs_cmd = fabs(speed_left);
+    if (fabs(speed_right) > max_abs_cmd) max_abs_cmd = fabs(speed_right);
+    if (max_abs_cmd > kWheelCmdMax) {
+        double scale = kWheelCmdMax / max_abs_cmd;
+        speed_left *= scale;
+        speed_right *= scale;
+    }
+
+    // Détection de patinage et mitigation
+    float v_left_meas = (*wheels)[0].get_speed() * CONSTANTS::WHEEL_RADIUS;
+    float v_right_meas = (*wheels)[1].get_speed() * CONSTANTS::WHEEL_RADIUS;
+    double abs_diff = fabs((double)v_left_meas - (double)v_right_meas);
+    double fast = std::max(fabs((double)v_left_meas), fabs((double)v_right_meas));
+    double slow = std::min(fabs((double)v_left_meas), fabs((double)v_right_meas));
+    if (abs_diff > kSlipDiffThreshold && fast > kSlipMinFast && slow < fast * 0.7) {
+        double scale = (slow + 40.0) / (fast + 40.0);
+        if (scale < kSlipMinScale) scale = kSlipMinScale;
+        speed_left *= scale;
+        speed_right *= scale;
+    }
 
     (*wheels)[0].set_motor_power((int32_t)speed_left);
     (*wheels)[1].set_motor_power((int32_t)speed_right);
