@@ -19,10 +19,10 @@ bool sensorActive[3] = {false, false, false};
 
 /*Tableaux pour stocker les distances des tofs*/
 // Ordre des capteurs : [0]=Centre, [1]=Gauche, [2]=Droite
-// On stocke 8 zones (ligne du milieu de la matrice 8x8)
-float distances_tof[3][8]; 
+// On stocke 3 lignes (Haut=0, Milieu=1, Bas=2) de 8 zones
+float distances_tof[3][3][8]; 
 
-// Coordonnées (x, y) des obstacles calculées
+// Coordonnées (x, y) des obstacles calculées (Ligne du milieu uniquement)
 float obstacleX[3][8];
 float obstacleY[3][8];
 
@@ -182,8 +182,12 @@ void loop_tof() {
     // Vérifie si des données sont prêtes
     if (sensors[i].isDataReady()) {
       // SEULEMENT si on a de nouvelles données, réinitialiser les zones
+      for (int row = 0; row < 3; row++) {
+        for (int z = 0; z < 8; z++) {
+          distances_tof[i][row][z] = 0;
+        }
+      }
       for (int z = 0; z < 8; z++) {
-        distances_tof[i][z] = 0;
         obstacleX[i][z] = 0;
         obstacleY[i][z] = 0;
       }
@@ -194,57 +198,50 @@ void loop_tof() {
         float tofX = robotX + tofOffsets[i][0] * cosTheta - tofOffsets[i][1] * sinTheta;
         float tofY = robotY + tofOffsets[i][0] * sinTheta + tofOffsets[i][1] * cosTheta;
 
-        // Lire uniquement les 2 lignes du milieu pour l'évitement
-        // Ligne du milieu haut : indices 24-31
-        // Ligne du milieu bas : indices 32-39
-        for(int zone = 0; zone < 8; zone++){
-            float minDist = 500.0f; // Initialiser avec une grande distance
-            
-            // Vérifier uniquement les 2 lignes du milieu
-            int lineIndices[2] = {24, 32}; // Milieu haut + milieu bas
-            
-            for(int lineIdx = 0; lineIdx < 2; lineIdx++){
-              int j = lineIndices[lineIdx] + zone;
+        // Lire les 3 lignes nécessaires du mode 8x8 (haut, milieu, bas)
+        int lineIndices[3] = {56, 24, 0}; // Haut = 56, Milieu = 24, Bas = 0
+        
+        for(int row = 0; row < 3; row++) {
+          for(int zone = 0; zone < 8; zone++){
+              int j = lineIndices[row] + zone;
               if(measurementData.target_status[j] == 5 || measurementData.target_status[j] == 9){
                 float dist = measurementData.distance_mm[j];
                 if(dist > 0 && dist < 500) {
-                  minDist = min(minDist, dist);
+                  distances_tof[i][row][zone] = dist;
+                    
+                  // Uniquement calculer l'obstacle si c'est la ligne du milieu (row == 1)
+                  if(row == 1) {
+                    // Calculer l'angle absolu de cette zone dans le repère terrain
+                    float zoneAngle = getTOFZoneAngle(i, zone);  // Angle relatif au robot (en degrés)
+                    float obstacleAngleDeg = robotTheta + zoneAngle;  // Angle absolu en degrés
+                    float obstacleAngleRad = obstacleAngleDeg * PI / 180.0f;  // Convertir en radians
+                      
+                    // Position de l'obstacle en repère absolu
+                    float absX = tofX + dist * cos(obstacleAngleRad);
+                    float absY = tofY + dist * sin(obstacleAngleRad);
+                      
+                    obstacleX[i][zone] = absX;
+                    obstacleY[i][zone] = absY;
+                      
+                    // Ajouter à la liste des obstacles détectés
+                    Obstacle obs;
+                    obs.x = absX;
+                    obs.y = absY;
+                    obs.distance = dist;
+                    obs.angle = zoneAngle;
+                    obs.sensor = i;
+                    obs.zone = zone;
+                    detectedObstacles.push_back(obs);
+                  }
                 }
               }
-            }
-            
-            // Utiliser la distance minimale trouvée
-            if(minDist < 500.0f) {
-              distances_tof[i][zone] = minDist;
-                
-                // Calculer l'angle absolu de cette zone dans le repère terrain
-                float zoneAngle = getTOFZoneAngle(i, zone);  // Angle relatif au robot (en degrés)
-                float obstacleAngleDeg = robotTheta + zoneAngle;  // Angle absolu en degrés
-                float obstacleAngleRad = obstacleAngleDeg * PI / 180.0f;  // Convertir en radians
-                
-                // Position de l'obstacle en repère absolu
-                float absX = tofX + minDist * cos(obstacleAngleRad);
-                float absY = tofY + minDist * sin(obstacleAngleRad);
-                
-                obstacleX[i][zone] = absX;
-                obstacleY[i][zone] = absY;
-                
-                // Ajouter à la liste des obstacles détectés
-                Obstacle obs;
-                obs.x = absX;
-                obs.y = absY;
-                obs.distance = minDist;
-                obs.angle = zoneAngle;
-                obs.sensor = i;
-                obs.zone = zone;
-                detectedObstacles.push_back(obs);
-            }
+          }
         }
 
         // Afficher les coordonnées des obstacles détectés par ce capteur (repère absolu)
         Serial.print("TOF"); Serial.print(i+1); Serial.print(": ");
         for(int zone = 0; zone < 8; zone++) {
-          if(distances_tof[i][zone] > 0 && distances_tof[i][zone] < 500) {
+          if(distances_tof[i][1][zone] > 0 && distances_tof[i][1][zone] < 500) {
             Serial.print("[Z"); Serial.print(zone); Serial.print(": ");
             Serial.print((int)obstacleX[i][zone]); Serial.print("mm,");
             Serial.print((int)obstacleY[i][zone]); Serial.print("mm] ");
@@ -280,7 +277,8 @@ void calcule_points_tof() {
     float zoneStart = -sensorFOV[sensor] / 2.0f + zoneStep / 2.0f;
     
     for (int zone = 0; zone < 8; zone++) {
-      float dist = distances_tof[sensor][zone];
+      // Uniquement se baser sur la ligne du milieu !
+      float dist = distances_tof[sensor][1][zone];
       if (dist > 0) {
         // Angle total = robot + capteur + zone
         float zoneAngle = zoneStart + zone * zoneStep;

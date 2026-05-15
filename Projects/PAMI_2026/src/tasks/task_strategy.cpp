@@ -44,7 +44,7 @@ struct RouteWaypoint {
 };
 
 static const RouteWaypoint matchRoute_base[] = {
-    {550.0f, 600.0f, "Tout droit"},
+    {550.0f, 550.0f, "Tout droit"},
     {1200.0f, 600.0f, "Tourne"},
 };
 
@@ -68,7 +68,7 @@ static void initializeRoute() {
     
     // Adapter le deuxième waypoint selon la couleur
     if (MATCH_ROUTE_COUNT_BASE > 1) {
-        matchRoute[1].y = (teamColor == COLOR_BLUE) ? 575.0f : 550.0f;
+        matchRoute[1].y = (teamColor == COLOR_BLUE) ? 600.0f : 550.0f;
     }
     
     actualRouteCount = MATCH_ROUTE_COUNT_BASE;
@@ -87,7 +87,7 @@ static void addBonusWaypoint() {
     if (!bonusWaypointAdded && actualRouteCount < 10) {
         // Ajouter le waypoint bonus symétrisé selon la couleur
         matchRoute[actualRouteCount].x = symmetrizeX(1800.0f);
-        matchRoute[actualRouteCount].y = symmetrizeY(600.0f);
+        matchRoute[actualRouteCount].y = symmetrizeY(575.0f);
         matchRoute[actualRouteCount].label = "Bonus obstacle";
         
         Serial.printf("[STRATEGY] ⚠ Waypoint BONUS détecté! Ajout: (%.0f, %.0f)\n",
@@ -148,12 +148,25 @@ void Task_Strategy(void *pvParameters) {
         
         bool tofProximityDetected = false;
         
-        // Vérifier SEULEMENT le capteur TOF central (indice 2) sur les lignes du milieu/bas
+        // Vérifier le capteur TOF central (indice 2) sur la ligne HAUTE (row 0, zones 0-7)
         int centralSensor = 2; // TOF3 = Centre
+        int topRow = 0; // Ligne haute
         for (int j = 0; j < 8; j++) {
-            if (distances_tof[centralSensor][j] > 0 && distances_tof[centralSensor][j] < 100) { // <10cm = 100mm
+            if (distances_tof[centralSensor][topRow][j] > 0 && distances_tof[centralSensor][topRow][j] < 100) { // <10cm = 100mm
                 tofProximityDetected = true;
                 break;
+            }
+        }
+
+        // Vérifier aussi le capteur latéral sur la ligne milieu :
+        // Droite (0) si Jaune, Gauche (1) si Bleu
+        if (!tofProximityDetected) {
+            int lateralSensor = (teamColor == COLOR_YELLOW) ? 0 : 1;
+            for (int j = 0; j < 8; j++) {
+                if (distances_tof[lateralSensor][1][j] > 0 && distances_tof[lateralSensor][1][j] < 100) {
+                    tofProximityDetected = true;
+                    break;
+                }
             }
         }
         
@@ -298,11 +311,12 @@ void Task_Strategy(void *pvParameters) {
                 if (!routeFinished && checkPosition()) {
                     // Vérifier si on vient de terminer le 1er waypoint (index 0)
                     if (currentRouteIndex == 0) {
-                        // Vérifier détection TOF du bas (zones 0-3 du capteur central)
+                        // Vérifier détection TOF du bas (zones 0-7 du capteur central)
                         bool obstacleDetectedAtWaypoint0 = false;
                         int centralSensor = 2; // TOF central
-                        for (int j = 0; j < 4; j++) {  // Zones du bas
-                            if (distances_tof[centralSensor][j] > 0 && distances_tof[centralSensor][j] < 100) {
+                        int bottomRow = 2; // Ligne basse (index 2 dans le nouveau tableau 3D)
+                        for (int j = 0; j < 8; j++) {  // Zones du bas
+                            if (distances_tof[centralSensor][bottomRow][j] > 0 && distances_tof[centralSensor][bottomRow][j] < 100) {
                                 obstacleDetectedAtWaypoint0 = true;
                                 break;
                             }
