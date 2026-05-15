@@ -328,7 +328,7 @@ void Task_Strategy(void *pvParameters) {
                 
                 // Fin de match ? (18s ou 99s selon debug)
                 unsigned long matchDurationMS = debugMode ? DEBUG_MATCH_DURATION_MS : NORMAL_MATCH_DURATION_MS;
-                if ((millis() - matchStartTime) >= matchDurationMS) {
+                if ((millis() - tiretteTime) >= matchDurationMS) {
                     state = STATE_END;
                     stopMotors();
                     gameStartSent = false; // Réinitialiser pour la prochaine partie
