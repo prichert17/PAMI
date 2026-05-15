@@ -44,42 +44,66 @@ struct RouteWaypoint {
 };
 
 static const RouteWaypoint matchRoute_base[] = {
-    {550.0f, 650.0f, "Tout droit"},
-    {1200.0f, 650.0f, "Tourne"},
-    //{0.0f, 0.0f, "Retour a l'origine"}
+    {550.0f, 600.0f, "Tout droit"},
+    {1200.0f, 600.0f, "Tourne"},
 };
 
-static const uint8_t MATCH_ROUTE_COUNT = sizeof(matchRoute_base) / sizeof(matchRoute_base[0]);
+static const uint8_t MATCH_ROUTE_COUNT_BASE = sizeof(matchRoute_base) / sizeof(matchRoute_base[0]);
 
-// Tableau des waypoints ajustés selon la couleur
-static RouteWaypoint matchRoute[2];
+// Tableau des waypoints ajustés selon la couleur (dimensionné pour ajouter un waypoint bonus)
+static RouteWaypoint matchRoute[10];
 
 static uint8_t currentRouteIndex = 0;
+static uint8_t actualRouteCount = MATCH_ROUTE_COUNT_BASE; // Nombre actuel de waypoints
+static bool bonusWaypointAdded = false; // Pour tracker si le bonus a déjà été ajouté
 static bool routeFinished = false;
 
 // Fonction pour initialiser les waypoints en fonction de la couleur
 static void initializeRoute() {
-    for (int i = 0; i < MATCH_ROUTE_COUNT; i++) {
+    for (int i = 0; i < MATCH_ROUTE_COUNT_BASE; i++) {
         matchRoute[i].x = symmetrizeX(matchRoute_base[i].x);
         matchRoute[i].y = symmetrizeY(matchRoute_base[i].y);
         matchRoute[i].label = matchRoute_base[i].label;
     }
+    
+    // Adapter le deuxième waypoint selon la couleur
+    if (MATCH_ROUTE_COUNT_BASE > 1) {
+        matchRoute[1].y = (teamColor == COLOR_BLUE) ? 575.0f : 550.0f;
+    }
+    
+    actualRouteCount = MATCH_ROUTE_COUNT_BASE;
+    bonusWaypointAdded = false;
     Serial.printf("[STRATEGY] Route initialisée pour couleur %s\n", 
                   (teamColor == COLOR_BLUE) ? "BLEU" : "JAUNE");
     if (teamColor == COLOR_BLUE) {
-        for (int i = 0; i < MATCH_ROUTE_COUNT; i++) {
+        for (int i = 0; i < actualRouteCount; i++) {
             Serial.printf("[STRATEGY] Waypoint %d: (%.0f, %.0f) - %s\n", 
                           i, matchRoute[i].x, matchRoute[i].y, matchRoute[i].label);
         }
     }
 }
 
+static void addBonusWaypoint() {
+    if (!bonusWaypointAdded && actualRouteCount < 10) {
+        // Ajouter le waypoint bonus symétrisé selon la couleur
+        matchRoute[actualRouteCount].x = symmetrizeX(1800.0f);
+        matchRoute[actualRouteCount].y = symmetrizeY(600.0f);
+        matchRoute[actualRouteCount].label = "Bonus obstacle";
+        
+        Serial.printf("[STRATEGY] ⚠ Waypoint BONUS détecté! Ajout: (%.0f, %.0f)\n",
+                      matchRoute[actualRouteCount].x, matchRoute[actualRouteCount].y);
+        
+        actualRouteCount++;
+        bonusWaypointAdded = true;
+    }
+}
+
 static void sendCurrentWaypoint() {
-    if (currentRouteIndex < MATCH_ROUTE_COUNT) {
+    if (currentRouteIndex < actualRouteCount) {
         sendPosition(matchRoute[currentRouteIndex].x, matchRoute[currentRouteIndex].y);
         Serial.printf("[STRATEGY] Cible %u/%u: %s (X=%.1f, Y=%.1f)\n",
                       currentRouteIndex + 1,
-                      MATCH_ROUTE_COUNT,
+                      actualRouteCount,
                       matchRoute[currentRouteIndex].label,
                       matchRoute[currentRouteIndex].x,
                       matchRoute[currentRouteIndex].y);
@@ -265,12 +289,31 @@ void Task_Strategy(void *pvParameters) {
                 if (!gameStartSent) {
                     currentRouteIndex = 0;
                     routeFinished = false;
+                    bonusWaypointAdded = false; // Réinitialiser pour la partie
+                    actualRouteCount = MATCH_ROUTE_COUNT_BASE; // Réinitialiser le nombre de waypoints
                     sendCurrentWaypoint();
                     gameStartSent = true;
                 }
 
                 if (!routeFinished && checkPosition()) {
-                    if (currentRouteIndex + 1 < MATCH_ROUTE_COUNT) {
+                    // Vérifier si on vient de terminer le 1er waypoint (index 0)
+                    if (currentRouteIndex == 0) {
+                        // Vérifier détection TOF du bas (zones 0-3 du capteur central)
+                        bool obstacleDetectedAtWaypoint0 = false;
+                        int centralSensor = 2; // TOF central
+                        for (int j = 0; j < 4; j++) {  // Zones du bas
+                            if (distances_tof[centralSensor][j] > 0 && distances_tof[centralSensor][j] < 100) {
+                                obstacleDetectedAtWaypoint0 = true;
+                                break;
+                            }
+                        }
+                        
+                        if (obstacleDetectedAtWaypoint0) {
+                            addBonusWaypoint();
+                        }
+                    }
+                    
+                    if (currentRouteIndex + 1 < actualRouteCount) {
                         currentRouteIndex++;
                         sendCurrentWaypoint();
                     } else {
