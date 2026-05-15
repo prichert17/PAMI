@@ -44,8 +44,8 @@ struct RouteWaypoint {
 };
 
 static const RouteWaypoint matchRoute_base[] = {
-    {500.0f, 550.0f, "Tout droit"},
-    {1200.0f, 500.0f, "Tourne"},
+    {550.0f, 650.0f, "Tout droit"},
+    {1200.0f, 650.0f, "Tourne"},
     //{0.0f, 0.0f, "Retour a l'origine"}
 };
 

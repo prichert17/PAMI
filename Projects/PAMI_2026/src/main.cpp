@@ -23,7 +23,7 @@
 #define TERRAIN_SIZE_Y 2000
 
 // Coordonnées initiales de base (pour couleur YELLOW)
-const float ROBOT_BASE_X = 450.0f;   // Position X initiale (mm)
+const float ROBOT_BASE_X = 550.0f;   // Position X initiale (mm)
 const float ROBOT_BASE_Y = 160.0f;   // Position Y initiale (mm)
 const float ROBOT_INIT_Z = 90.0f;    // Orientation initiale (degrés)
 
