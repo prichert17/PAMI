@@ -148,27 +148,15 @@ void Task_Strategy(void *pvParameters) {
         
         bool tofProximityDetected = false;
         
-        // Vérifier le capteur TOF central (indice 2) sur la ligne HAUTE (row 0, zones 0-7)
+        // Vérifier le capteur TOF central (indice 2) sur la ligne du milieu
         int centralSensor = 2; // TOF3 = Centre
-        int topRow = 0; // Ligne haute
         for (int j = 0; j < 8; j++) {
-            if (distances_tof[centralSensor][topRow][j] > 0 && distances_tof[centralSensor][topRow][j] < 100) { // <10cm = 100mm
+            if (distances_tof[centralSensor][1][j] > 0 && distances_tof[centralSensor][1][j] < 100) { // <10cm = 100mm
                 tofProximityDetected = true;
                 break;
             }
         }
 
-        // Vérifier aussi le capteur latéral sur la ligne milieu :
-        // Droite (0) si Jaune, Gauche (1) si Bleu
-        if (!tofProximityDetected) {
-            int lateralSensor = (teamColor == COLOR_YELLOW) ? 0 : 1;
-            for (int j = 0; j < 8; j++) {
-                if (distances_tof[lateralSensor][1][j] > 0 && distances_tof[lateralSensor][1][j] < 100) {
-                    tofProximityDetected = true;
-                    break;
-                }
-            }
-        }
         
         // Arrêt/Reprise sur détection TOF
         tofObstacleDetected = tofProximityDetected;
