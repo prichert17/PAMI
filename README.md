@@ -2,6 +2,10 @@
 
 Ce dépôt documente le projet PAMI (Petit Actionneur Motorisé Indépendant) sur lequel j'ai travaillé pendant un an, dans le cadre de la coupe Eurobot 2026. Il centralise l'ensemble de la conception matérielle (deux PCB, structure mécanique) et logicielle du robot. 
 
+![alt text](20260719_123606.jpg)
+
+![alt text](image.png)
+
 
 ## Codes principaux
 
@@ -13,7 +17,7 @@ Pour mieux comprendre l'architecture du système, voici les trois éléments imp
 
 ---
 
-## ⚙️ Architecture Bas Niveau : PCB Principal (Contrôle Moteurs & Alimentation)
+## Architecture Bas Niveau : PCB Principal (Contrôle Moteurs & Alimentation)
 
 Le robot dispose de deux cartes électroniques (PCB). La partie bas niveau, gérée par le PCB s'occupe de l'alimentation générale et de la motricité du robot. Le PAMI est assez compact : ses dimensions finales sont de 10.5cm par 19cm avec ses bras repliés (et 24cm bras dépliés), ce qui a imposé des contraintes sur le routage du circuit et le choix des composants.
 
@@ -24,7 +28,6 @@ Le robot est alimenté par une unique cellule de batterie LiFePO4 au format 2665
 *   **Sécurité Batterie :** La batterie est surveillée par un IC de protection **HY2112**, associé à un double MOSFET N-Channel (FS8205A) pour couper le circuit en cas de problème.
 *   **Régulation de tension :** La tension de la cellule LiFePO4 pouvant monter à 3.6V (ce qui est trop élevé pour l'ESP32 et certains capteurs), j'ai opté pour un convertisseur **Buck-Boost (TPS63000)** au lieu d'un simple circuit Boost. Il assure un 3.3V parfaitement stable en abaissant ou élevant la tension de la batterie selon les besoins, pour un courant jusqu'à 1A.
 *   **Le problème des appels de courant :** Un problème est survenu avec l'alimentation des servomoteurs. Leurs appels de courant créaient d'énormes chutes de tension (la tension de la batterie chutait jusqu'à 2.4V pendant un court instant). Le robot ne parvenait pas à se lever de manière autonome, la tension de la batterie passait en dessous du seuil limite du circuit boost 6V. La résistance interne du boitier de la batterie 26650 et des pistes de cuivre trop fines (1.5mm) qui ne supportaient pas les pics d'intensité très élevés (pouvant monter jusqu'à 3A sur le rail 6V, soit quasiment 6A en sortie de la batterie). Le problème a été résolu en soudant un condensateur de 2200µF (10V) directement à l'entrée du boost 6V pour agir comme une réserve d'énergie, ce qui diminuait fortement la chute de tension.
-![alt text](20260510_120454.jpg)
 
 ### 2. Odométrie, Moteurs et NUCLEO-G431KB
 La carte intègre un microcontrôleur STM32 (NUCLEO-G431KB) pour gérer la dynamique du robot.
@@ -35,6 +38,6 @@ La carte intègre un microcontrôleur STM32 (NUCLEO-G431KB) pour gérer la dynam
 
 ### Schématique du PCB Principal
 
-Afin d'illustrer ce travail de conception, voici un extrait de la schématique électrique du PCB principal (Moteurs & Alimentation) montrant l'interconnexion entre la NUCLEO, les drivers moteurs, le circuit de charge de la batterie et le régulateur Buck-Boost :
-
+Afin d'illustrer ce travail de conception, voici la schématique électrique du PCB principal (Moteurs & Alimentation) montrant l'interconnexion entre la NUCLEO, les drivers moteurs, le circuit de charge de la batterie et le régulateur Buck-Boost :
+![alt text](image-1.png)
 ![alt text](<Pasted image 20251218120624.png>)
