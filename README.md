@@ -30,13 +30,10 @@ Pour mieux comprendre l'architecture du système, voici les trois éléments imp
 Le robot dispose de deux cartes électroniques (PCB). La partie bas niveau, gérée par le PCB principal s'occupe de l'alimentation générale et de la motricité du robot. Le PAMI est assez compact : ses dimensions finales sont de 10.5cm par 19cm avec ses bras repliés (et 24cm bras dépliés), ce qui a imposé des contraintes sur le routage du circuit et le choix des composants.
 
 ### 1. Gestion de la Batterie et Alimentation
-Le robot est alimenté par une unique cellule de batterie au format 26650. 
+Le robot est alimenté par une unique cellule de batterie LiFePO4 au format 26650. Le circuit d'alimentation a subi plusieurs modifications suite à des problèmes rencontrés lors du développement :
 
 *   **Le choix du LiFePO4 :** Bien que l'intégration de cette chimie ait rendu la conception du circuit d'alimentation plus complexe (notamment pour la régulation de tension, le prix plus élevé), c'est un choix qui reste très avantageux. Le LiFePO4 est extrêmement sécurisé (aucun risque d'incendie, pas besoin de sac ignifugé contrairement aux batteries LiPo), il offre un excellent courant de décharge (15A) pour les moteurs, et l'utilisation d'une seule et unique cellule simplifie grandement le processus de charge (pas d'équilibrage entre deux cellules nécessaire).
 *   **Port USB C intégré :** Pour une simplicité d'usage maximale, un port USB C standard a été intégré au design, permettant de recharger facilement la batterie avec n'importe quel chargeur ou batterie externe.
-
-Le circuit d'alimentation a subi plusieurs modifications suite à des problèmes rencontrés lors du développement :
-
 *   **Circuit de Charge :** La charge est gérée directement sur le PCB par un composant dédié à ce type de batterie, le **CN3058E**, avec des LEDs indicatrices (Charge en cours / Charge terminée).
 *   **Sécurité Batterie :** La batterie est surveillée par un IC de protection **HY2112**, associé à un double MOSFET N-Channel (FS8205A) pour couper le circuit en cas de problème.
 *   **Régulation de tension :** La tension de la cellule LiFePO4 pouvant monter à 3.6V (ce qui est trop élevé pour l'ESP32 et certains capteurs), j'ai opté pour un convertisseur **Buck-Boost (TPS63000)** au lieu d'un simple circuit Boost. Il assure un 3.3V parfaitement stable en abaissant ou élevant la tension de la batterie selon les besoins, pour un courant jusqu'à 1A.
@@ -114,6 +111,29 @@ La logique de match est dictée par une machine à états :
     *   *Vert fixe* : Match en cours.
     *   *Jaune/Bleu* : Robot en attente de la tirette, affiche la couleur de l'équipe sélectionnée.
 
+### 5. Conception de la Carte ESP32 (PCB Haut Niveau)
+Pour centraliser toutes ces fonctionnalités, un second PCB a été conçu spécifiquement pour accueillir l'ESP32. Cette carte vient se superposer à la carte d'alimentation principale et gère toute la logique périphérique :
+
+*   **L'Interface Utilisateur (Switchs et LED) :** La carte intègre directement 3 interrupteurs (`DEBUG` pour l'affichage des logs, `TERRAIN` pour le choix de la couleur, et `MODE` pour basculer entre le mode automatique et le contrôle manuel via manette bluetooth), le connecteur pour la `Tirette` de démarrage, ainsi que la LED d'état WS2812B.
+*   **Les Capteurs ToF :** Le routage contient aussi les 3 capteurs VL53L5CX (avec les angles adéquats pour couvrir l'avant du robot). On y retrouve le bus I2C commun (SDA/SCL) ainsi que les broches dédiées `LPN1`, `LPN2`, et `LPN3` permettant d'allumer les capteurs séquentiellement pour modifier leur adresse I2C au boot.
+*   **Les Actionneurs (Servomoteurs) :** 3 connecteurs pour servomoteurs (`SERVO m1`, `SERVO m2`, `SERVO m3`) sont présents. Ils sont alimentés directement par le rail **6V** provenant de la carte principale, et commandés par des broches PWM de l'ESP32. Des condensateurs de 100µF sont placés au plus près des connecteurs pour lisser les appels de courant.
+*   **Interconnexion :** Le connecteur `COMM_inter_mcu` assure la liaison avec la carte STM32 pour l'UART (TX/RX), les alimentations (3.3V et 6V), et les deux moteurs auxiliaires posés sur l'actionneur du robot qui lui permette de gravire des obstacles.
+
+Voici la schématique et le routage de cette seconde carte :
+
+<p align="center">
+  <img src="Schematique_pcb_tof.png" width="100%">
+  <br>
+  <em>Légende : Schématique détaillée du PCB ESP32 (Capteurs, IHM, Servos)</em>
+</p>
+
+<p align="center">
+  <img src="Routage_pcb_tof.png" width="100%">
+  <br>
+  <em>Légende : Routage du PCB ESP32</em>
+</p>
+
+---
 
     ## Conclusion et Démonstration en Match
 
