@@ -135,7 +135,7 @@ Voici la schématique et le routage de cette seconde carte :
 
 ---
 
-    ## Conclusion et Démonstration en Match
+## Conclusion et Démonstration en Match
 
 Après de nombreuses itérations matérielles (sur les deux itérations de PCB et la mécanique) ainsi qu'un gros travail d'optimisation logicielle, le PAMI a su remplir son rôle de manière fiable et concluante.
 
