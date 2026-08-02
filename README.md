@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/da78b981-4823-4385-9d1e-359f528d1843
+
 # Projet PAMI (2025-2026) - Eurobot
 
 Ce dépôt documente le projet PAMI (Petit Actionneur Motorisé Indépendant) sur lequel j'ai travaillé pendant un an, dans le cadre de la coupe Eurobot 2026. Il centralise l'ensemble de la conception matérielle (deux PCB, structure mécanique) et logicielle du robot. 
@@ -121,6 +125,6 @@ Après de nombreuses itérations matérielles (sur les deux itérations de PCB e
 
 Voici une courte vidéo démontrant son fonctionnement lors d'un match (cas le plus simple, sans obstacles) :
 
-<div align="center">
-  <video src="./video_match.mp4" width="80%" controls="controls"></video>
-</div>
+
+https://github.com/user-attachments/assets/42d38b15-34ad-48e5-a77b-8a1eeed6a4e9
+
