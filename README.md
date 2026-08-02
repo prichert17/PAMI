@@ -75,7 +75,7 @@ Voici la schématique électrique du PCB principal (Moteurs & Alimentation) mont
 
 ## Architecture Haut Niveau : Capteurs et Stratégie (ESP32)
 
-La seconde carte du robot embarque un **ESP32**. Ce microcontrôleur fait office de cerveau principal : il ne gère aucun moteur directement, mais s'occupe de la prise de décision, de la vision spatiale (capteurs ToF matriciels), de la gestion du temps de match et de l'interface utilisateur.
+La seconde carte du robot embarque un **ESP32**. Ce microcontrôleur fait office de cerveau principal : il ne gère pas les moteurs principaux directement, mais s'occupe de la prise de décision, de la vision spatiale (capteurs ToF matriciels), de la gestion du temps de match et de l'interface utilisateur.
 
 ### 1. Multitâche avec FreeRTOS
 Pour garantir une réactivité maximale sans bloquer le système lors de la lecture des capteurs I2C (qui peut être lente), le code de l'ESP32 est architecturé autour du système d'exploitation temps réel **FreeRTOS**. Les tâches sont réparties sur les deux cœurs (Cores) physiques du processeur :
